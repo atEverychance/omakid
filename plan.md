@@ -2,7 +2,7 @@
 
 ## Outcome
 
-Maintain Omakid as a bounded overlay on reviewed Omarchy Quattro source, ISO-builder, and package-repository revisions. Build a bootable x86_64 ISO plus SHA256 in GitHub Actions for Dell Inspiron 15-3531 Bay Trail laptops.
+Maintain Omakid as a bounded overlay on reviewed Omarchy Quattro source, ISO-builder, and package-repository revisions. Build a bootable x86_64 ISO plus SHA256 and full VM install acceptance evidence in GitHub Actions for Dell Inspiron 15-3531 Bay Trail laptops.
 
 ## Implemented architecture
 
@@ -18,7 +18,7 @@ Maintain Omakid as a bounded overlay on reviewed Omarchy Quattro source, ISO-bui
 10. **Native curfew.** A systemd timer enforces only the settled 16:00–20:00 advisory window. `timekpr-next` and unspecified daily quotas are absent.
 11. **Trimmed target.** The target manifest retains the four apps, Hyprland/Quickshell, SDDM, NetworkManager, audio, portals, fonts, brightness, zram, and the small set of commands Quattro's current system/user finalizers execute. Bay Trail graphics use kernel `i915`/modesetting, Mesa OpenGL, and legacy i965 VA-API; unsupported iHD, oneVPL, and Vulkan packages and stages are absent. Adult development tools and irrelevant hardware service setup are removed from the target path; the firewall uses a minimal native UFW policy rather than the omitted Docker integration.
 12. **Arch Chromium policy.** Policy is package-owned at `/etc/chromium/policies/managed/omakid.json`; localhost Stories is explicitly allowed.
-13. **CI.** `.github/workflows/build-iso.yml` supports manual dispatch once registered on the default branch and branch-scoped pushes only for the reviewed `build/omakid-quattro-iso` branch, with no schedule or pull-request trigger; checks out exact fresh upstream revisions; prepares content/overlays; runs tests before and after preparation; builds through upstream Docker `--local-source`; and uses `xorriso` to require a readable ISO with BIOS and UEFI El Torito entries before SHA256 generation and artifact upload. It does not publish a release.
+13. **CI.** `.github/workflows/build-iso.yml` supports manual dispatch once registered on the default branch and branch-scoped pushes only for the reviewed `build/omakid-quattro-iso` branch, with no schedule or pull-request trigger; checks out exact fresh upstream revisions; prepares content/overlays; runs tests before and after preparation; builds through upstream Docker `--local-source`; uses `xorriso` to require a readable ISO with BIOS and UEFI El Torito entries before SHA256 generation; runs a mandatory KVM-backed upstream `omarchy-iso-test --install-only` gate at 4096 MiB UEFI boot; and uploads ISO, checksum, VM result JSON, harness log, and proof screenshot. It does not publish a release.
 
 ## Commands
 
@@ -42,7 +42,7 @@ Release preparation omits `--skip-content`. Full ISO building requires x86_64 Li
 - Shell and JSON syntax; optional WAV codec inspection with `ffprobe`.
 - Required flags/audio and exact clip inventory.
 - Bare package manifests, the bounded Bay Trail Mesa/i965 stack, and absence of unsupported modern Intel graphics/media packages.
-- An ISO workflow supporting manual dispatch once registered on the default branch plus pushes only to `build/omakid-quattro-iso`, with no schedule or pull-request trigger, and with `xorriso` BIOS and UEFI El Torito gates before checksum/upload.
+- An ISO workflow supporting manual dispatch once registered on the default branch plus pushes only to `build/omakid-quattro-iso`, with no schedule or pull-request trigger, with `xorriso` BIOS and UEFI El Torito gates before checksum/upload, and a mandatory 4096 MiB KVM/UEFI `omarchy-iso-test --install-only` VM gate whose pass artifacts are uploaded with the ISO (result JSON, harness log, screenshot).
 - Current Quattro Lua wiring, locked Home/media/brightness bindings, one PanelWindow, and bounded geometry.
 - Stable paths, current Chromium policy path, RCC date-time matching, pinned Tux Paint/SDL2_Pango provenance, and no unresolved markers in shipped paths.
 - Prepared-source contracts for runtime payload, setup form, package manifests, SDL2_Pango-before-Tux-Paint build/install handoff, exact offline artifact retention, online-resolution filtering, and fetched offline content.

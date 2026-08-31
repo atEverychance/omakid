@@ -59,7 +59,7 @@ NO_BOOT_OFFER=1 ./bin/omarchy-iso-make --local-source ../omarchy ../omarchy-pkgs
 sha256sum release/*.iso > release/omakid.iso.sha256
 ```
 
-The GitHub Actions workflow can be run manually once it is registered on the default branch, and it also runs on pushes only to the reviewed `build/omakid-quattro-iso` branch. It has no schedule or pull-request trigger because each build is large and slow. Before it generates the checksum or uploads artifacts, `xorriso` must read the image and report both BIOS and UEFI El Torito boot entries. The workflow does not publish a release. Its local package builder builds the pinned `sdl2_pango` AUR dependency before Tux Paint, installs that exact local artifact into the package-build container for the Tux Paint build, and retains both exact packages in the target's offline mirror.
+The GitHub Actions workflow can be run manually once it is registered on the default branch, and it also runs on pushes only to the reviewed `build/omakid-quattro-iso` branch. It has no schedule or pull-request trigger because each build is large and slow. Before it generates the checksum or uploads artifacts, `xorriso` must read the image and report both BIOS and UEFI El Torito boot entries. The workflow does not publish a release. It now also runs an upstream UEFI/KVM install gate (`omarchy-iso-test --install-only --no-preview --memory 4096 --timeout ...`) and only uploads release artifacts after that pass: ISO, SHA256, VM-install result JSON, harness log, and proof screenshot.
 
 ## Offline content
 

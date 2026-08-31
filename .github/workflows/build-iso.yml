@@ -62,6 +62,164 @@ jobs:
           NO_BOOT_OFFER: "1"
         run: ./bin/omarchy-iso-make --no-cache --local-source ../omarchy ../omarchy-pkgs
 
+      - name: Run upstream install acceptance harness
+        working-directory: upstream/omarchy-iso
+        env:
+          INSTALL_MEMORY_MB: "4096"
+          INSTALL_TIMEOUT_SECONDS: "3600"
+          TEST_SCOPE: "install-only"
+          INSTALL_RESULT_FILE: "omarchy-iso-test-result.json"
+          INSTALL_LOG_FILE: "omarchy-iso-test.log"
+          INSTALL_PROOF_FILE: "omarchy-iso-install-proof.png"
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          isos=(release/*.iso)
+          [[ ${#isos[@]} -eq 1 ]]
+          iso=${isos[0]}
+
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            qemu-system-x86 \
+            qemu-utils \
+            ovmf \
+            socat \
+            imagemagick \
+            tesseract-ocr \
+            tesseract-ocr-eng \
+            openssh-client
+
+          if [[ ! -e /dev/kvm ]]; then
+            echo "::error::/dev/kvm is required (KVM is mandatory for this acceptance gate)."
+            exit 1
+          fi
+          sudo chmod 666 /dev/kvm
+          if [[ ! -r /dev/kvm || ! -w /dev/kvm ]]; then
+            echo "::error::/dev/kvm is not accessible to the workflow user."
+            exit 1
+          fi
+
+          shim_dir="$(mktemp -d)"
+          printf '%s\n' '#!/usr/bin/env bash' 'exit 0' > "$shim_dir/omarchy-pkg-add"
+          chmod +x "$shim_dir/omarchy-pkg-add"
+          export PATH="$shim_dir:$PATH"
+
+          if ! command -v magick >/dev/null 2>&1; then
+            if command -v convert >/dev/null 2>&1; then
+              sudo ln -sfn "$(command -v convert)" /usr/local/bin/magick
+            else
+              echo "::error::ImageMagick convert not found while magick is missing."
+              exit 1
+            fi
+          fi
+
+          resolve_ovmf_file() {
+            local target=$1
+            local -a candidates
+
+            case "$target" in
+              CODE)
+                candidates=(
+                  /usr/share/OVMF/OVMF_CODE.4m.fd
+                  /usr/share/OVMF/OVMF_CODE_4M.fd
+                  /usr/share/OVMF/OVMF_CODE.fd
+                  /usr/share/OVMF/OVMF_CODE.secboot.4m.fd
+                  /usr/share/ovmf/OVMF_CODE.4m.fd
+                  /usr/share/ovmf/OVMF_CODE.fd
+                )
+                ;;
+              VARS)
+                candidates=(
+                  /usr/share/OVMF/OVMF_VARS.4m.fd
+                  /usr/share/OVMF/OVMF_VARS_4M.fd
+                  /usr/share/OVMF/OVMF_VARS.fd
+                  /usr/share/OVMF/OVMF_VARS.secboot.4m.fd
+                  /usr/share/ovmf/OVMF_VARS.4m.fd
+                  /usr/share/ovmf/OVMF_VARS.fd
+                )
+                ;;
+            esac
+
+            local candidate
+            for candidate in "${candidates[@]}"; do
+              if [[ -f $candidate ]]; then
+                printf '%s\n' "$candidate"
+                return 0
+              fi
+            done
+
+            candidate=$(find /usr/share -type f -iname "*${target}*4m*.fd" 2>/dev/null | head -n 1)
+            if [[ -n ${candidate:-} ]]; then
+              printf '%s\n' "$candidate"
+              return 0
+            fi
+
+            return 1
+          }
+
+          ovmf_code=$(resolve_ovmf_file CODE)
+          ovmf_vars=$(resolve_ovmf_file VARS)
+          if [[ -z ${ovmf_code:-} || -z ${ovmf_vars:-} ]]; then
+            echo "::error::Could not locate Ubuntu OVMF images for harness compatibility."
+            exit 1
+          fi
+
+          sudo mkdir -p /usr/share/edk2/x64
+          sudo ln -sfn "$ovmf_code" /usr/share/edk2/x64/OVMF_CODE.4m.fd
+          sudo ln -sfn "$ovmf_vars" /usr/share/edk2/x64/OVMF_VARS.4m.fd
+
+          iso_name=${iso##*/}
+          iso_sha=$(sha256sum "$iso" | awk '{print $1}')
+          run_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          log_file="release/$INSTALL_LOG_FILE"
+          result_file="release/$INSTALL_RESULT_FILE"
+          proof_status="null"
+          test_status="PASS"
+          harness_rc=0
+
+          ./bin/omarchy-iso-test \
+            "$iso" \
+            --install-only \
+            --memory "$INSTALL_MEMORY_MB" \
+            --timeout "$INSTALL_TIMEOUT_SECONDS" \
+            --no-preview \
+            >"$log_file" 2>&1 || harness_rc=$?
+          if (( harness_rc != 0 )); then
+            test_status="FAIL"
+          fi
+
+          latest_run_dir=$(find "test-runs/${iso_name%.iso}/runs" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -n 1 | awk '{print $2}' || true)
+
+          if [[ -n ${latest_run_dir:-} ]]; then
+            proof_screenshot=$(find "$latest_run_dir" -maxdepth 1 -type f \( -name 'success-*.png' -o -name 'failure-*.png' \) -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -n 1 | awk '{print $2}' || true)
+            if [[ -n ${proof_screenshot:-} ]]; then
+              cp "$proof_screenshot" "release/$INSTALL_PROOF_FILE"
+              proof_status="\"$INSTALL_PROOF_FILE\""
+            fi
+          fi
+
+          printf '%s\n' \
+            '{' \
+            "  \"result\": \"${test_status}\"," \
+            "  \"run_sha\": \"${GITHUB_SHA}\"," \
+            "  \"iso_filename\": \"${iso_name}\"," \
+            "  \"iso_sha256\": \"${iso_sha}\"," \
+            "  \"vm_memory_mb\": ${INSTALL_MEMORY_MB}," \
+            "  \"uefi\": true," \
+            "  \"kvm\": true," \
+            "  \"test_scope\": \"${TEST_SCOPE}\"," \
+            "  \"install_timeout_seconds\": ${INSTALL_TIMEOUT_SECONDS}," \
+            "  \"utc_time\": \"${run_utc}\"," \
+            "  \"harness_log\": \"${INSTALL_LOG_FILE}\"," \
+            "  \"proof_screenshot\": ${proof_status}" \
+            '}' > "$result_file"
+
+          if [[ "$test_status" != "PASS" ]]; then
+            echo "Upstream install acceptance harness failed. See ${log_file}" >&2
+            exit "$harness_rc"
+          fi
+
       - name: Validate ISO boot structure and generate SHA256
         working-directory: upstream/omarchy-iso/release
         shell: bash
@@ -87,5 +245,8 @@ jobs:
           path: |
             upstream/omarchy-iso/release/*.iso
             upstream/omarchy-iso/release/*.iso.sha256
+            upstream/omarchy-iso/release/omarchy-iso-test-result.json
+            upstream/omarchy-iso/release/omarchy-iso-test.log
+            upstream/omarchy-iso/release/omarchy-iso-install-proof.png
           if-no-files-found: error
           retention-days: 7

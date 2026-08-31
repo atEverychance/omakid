@@ -357,11 +357,12 @@ if result.returncode:
         f'fixture shell failed with {result.returncode}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}'
     )
 PY
-check "ISO workflow has exact dispatch and reviewed-branch push triggers plus BIOS/UEFI gates" python3 - <<'PY'
+check "ISO workflow dispatch, VM acceptance gate, and artifact contract" python3 - <<'PY'
 from pathlib import Path
 
 path = Path('.github/workflows/build-iso.yml')
 text = path.read_text()
+
 trigger_start = text.index('on:\n') + len('on:\n')
 trigger_end = text.index('\npermissions:')
 trigger_block = text[trigger_start:trigger_end]
@@ -376,17 +377,75 @@ if trigger_block != expected_trigger_block:
         f'{path}: expected workflow_dispatch plus only the reviewed branch push; '
         f'found:\n{trigger_block}'
     )
+
 required = [
     'apt-get install --yes wget xorriso',
+    'apt-get install --yes --no-install-recommends',
+    'qemu-system-x86',
+    'INSTALL_MEMORY_MB: "4096"',
+    'INSTALL_TIMEOUT_SECONDS: "3600"',
+    'ovmf',
+    'socat',
+    'imagemagick',
+    'tesseract-ocr',
+    'tesseract-ocr-eng',
+    'openssh-client',
     '-report_el_torito plain',
-    "El Torito boot img[[:space:]]*:.*BIOS",
-    "El Torito boot img[[:space:]]*:.*UEFI",
+    'El Torito boot img[[:space:]]*:.*BIOS',
+    'El Torito boot img[[:space:]]*:.*UEFI',
+    'Run upstream install acceptance harness',
+    'omarchy-pkg-add',
+    '--install-only',
+    '--memory "$INSTALL_MEMORY_MB"',
+    '--timeout "$INSTALL_TIMEOUT_SECONDS"',
+    '--no-preview',
+    'if [[ ! -e /dev/kvm ]]',
+    'sudo chmod 666 /dev/kvm',
+    'if [[ ! -r /dev/kvm || ! -w /dev/kvm ]]',
+    '/usr/share/edk2/x64/OVMF_CODE.4m.fd',
+    'omarchy-iso-test-result.json',
+    'omarchy-iso-test.log',
+    'omarchy-iso-install-proof.png',
 ]
 missing = [snippet for snippet in required if snippet not in text]
 if missing:
-    raise SystemExit(f'{path}: missing ISO structure gates: {missing}')
-if text.index('-report_el_torito plain') > text.index('sha256sum "$iso"'):
+    raise SystemExit(f'{path}: missing CI acceptance gates or artifacts: {missing}')
+
+if text.index('Run upstream install acceptance harness') > text.index('Validate ISO boot structure and generate SHA256'):
+    raise SystemExit(f'{path}: VM acceptance must run before BIOS/UEFI structure checks')
+
+structure_step = text.index('name: Validate ISO boot structure and generate SHA256')
+artifact_step = text.index('name: Upload ISO and checksum', structure_step)
+structure_block = text[structure_step:artifact_step]
+if structure_block.index('-report_el_torito plain') > structure_block.index('sha256sum "$iso"'):
     raise SystemExit(f'{path}: ISO structure must be checked before SHA256 generation')
+
+if 'run_sha' not in text:
+    raise SystemExit(f'{path}: VM acceptance receipt must include run SHA')
+if '>"$log_file" 2>&1 || harness_rc=$?' not in text or 'if (( harness_rc != 0 )); then' not in text:
+    raise SystemExit(f'{path}: harness failure status must be captured before writing the result receipt')
+if 'if ! ./bin/omarchy-iso-test' in text:
+    raise SystemExit(f'{path}: negated harness invocation would lose the real exit status')
+
+upload_start = text.index('path: |', text.index('name: Upload ISO and checksum'))
+upload_end = text.index('if-no-files-found:', upload_start)
+upload_block = text[upload_start:upload_end]
+artifacts = [line.strip() for line in upload_block.splitlines() if line.strip().startswith('upstream/omarchy-iso/release/')]
+required_artifacts = [
+    'upstream/omarchy-iso/release/*.iso',
+    'upstream/omarchy-iso/release/*.iso.sha256',
+    'upstream/omarchy-iso/release/omarchy-iso-test-result.json',
+    'upstream/omarchy-iso/release/omarchy-iso-test.log',
+    'upstream/omarchy-iso/release/omarchy-iso-install-proof.png',
+]
+missing_artifacts = [artifact for artifact in required_artifacts if artifact not in artifacts]
+if missing_artifacts:
+    raise SystemExit(f'{path}: upload artifact contract missing entries: {missing_artifacts}')
+if any(line.endswith('.qcow2') for line in artifacts):
+    raise SystemExit(f'{path}: qcow2 artifacts must not be uploaded with release')
+
+if artifacts.count('upstream/omarchy-iso/release/*.iso.sha256') != 1:
+    raise SystemExit(f'{path}: SHA file should be single wildcard entry only for ISO checksums')
 PY
 check "no unresolved markers in shipped overlay paths" sh -c \
   "! grep -RInsE 'TODO|FIXME|PLACEHOLDER' bin build home install packages system test --exclude=all"
