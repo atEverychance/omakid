@@ -128,21 +128,25 @@ check "native curfew has no daily quota" sh -c \
   "grep -q 'hour >= 16 && hour < 20' bin/omakid-curfew && grep -q 'OnUnitActiveSec=60s' system/etc/systemd/system/omakid-curfew.timer && ! grep -Rqs timekpr bin install system"
 check "reviewed Tux Paint package overlay exists" sh -c \
   "test -s packages/tuxpaint/PKGBUILD && grep -q '^pkgver=0.9.35' packages/tuxpaint/PKGBUILD && grep -q 'd77a0cdd57b3651a85cb719c195c4dc77fba6a89' packages/tuxpaint/.omarchy/package.json"
-check "ISO workflow is manual-only and gates BIOS plus UEFI structure" python3 - <<'PY'
+check "ISO workflow has exact dispatch and reviewed-branch push triggers plus BIOS/UEFI gates" python3 - <<'PY'
 from pathlib import Path
 
 path = Path('.github/workflows/build-iso.yml')
 text = path.read_text()
-lines = text.splitlines()
-start = lines.index('on:') + 1
-end = lines.index('permissions:')
-triggers = [
-    line.strip().removesuffix(':')
-    for line in lines[start:end]
-    if line.startswith('  ') and not line.startswith('    ')
-]
-if triggers != ['workflow_dispatch']:
-    raise SystemExit(f'{path}: expected only workflow_dispatch, found {triggers}')
+trigger_start = text.index('on:\n') + len('on:\n')
+trigger_end = text.index('\npermissions:')
+trigger_block = text[trigger_start:trigger_end]
+expected_trigger_block = (
+    '  workflow_dispatch:\n'
+    '  push:\n'
+    '    branches:\n'
+    '      - build/omakid-quattro-iso\n'
+)
+if trigger_block != expected_trigger_block:
+    raise SystemExit(
+        f'{path}: expected workflow_dispatch plus only the reviewed branch push; '
+        f'found:\n{trigger_block}'
+    )
 required = [
     'apt-get install --yes wget xorriso',
     '-report_el_torito plain',

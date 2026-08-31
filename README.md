@@ -59,7 +59,7 @@ NO_BOOT_OFFER=1 ./bin/omarchy-iso-make --local-source ../omarchy ../omarchy-pkgs
 sha256sum release/*.iso > release/omakid.iso.sha256
 ```
 
-The GitHub Actions workflow is manual-only because each build is large and slow. Before it generates the checksum or uploads artifacts, `xorriso` must read the image and report both BIOS and UEFI El Torito boot entries. The workflow does not publish a release.
+The GitHub Actions workflow can be run manually once it is registered on the default branch, and it also runs on pushes only to the reviewed `build/omakid-quattro-iso` branch. It has no schedule or pull-request trigger because each build is large and slow. Before it generates the checksum or uploads artifacts, `xorriso` must read the image and report both BIOS and UEFI El Torito boot entries. The workflow does not publish a release.
 
 ## Offline content
 

@@ -2,6 +2,9 @@ name: Build Omakid ISO
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - build/omakid-quattro-iso
 
 permissions:
   contents: read
