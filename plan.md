@@ -14,7 +14,7 @@ Maintain Omakid as a bounded overlay on reviewed Omarchy Quattro source, ISO-bui
 6. **Stable payload.** Runtime QML, assets, and fetched offline content live under `/usr/share/omarchy/shell/omakid`. User defaults are seeded through current `omarchy-settings-dev` packaging and `/etc/skel`; scripts contain no fixed account name.
 7. **Real localized assets.** Canada and Québec SVG flags are bundled. Thirty-four mono 44.1 kHz PCM WAV labels were generated with local macOS Samantha and Amélie `fr_CA` voices: four activities, Me, six colours, and six animals in each language.
 8. **Offline content.** Build-time fetching parses current full date-time RCC filenames, verifies KDE-published MD5 values, and requires complete English/French Storybooks counts and audio before packaging.
-9. **Offline Tux Paint.** The reviewed AUR recipe at commit `d77a0cdd57b3651a85cb719c195c4dc77fba6a89` is overlaid into `omarchy-pkgs`. The local-source ISO builder builds it in-container and retains its exact artifact in the offline mirror.
+9. **Offline Tux Paint chain.** The reviewed Tux Paint AUR recipe at commit `d77a0cdd57b3651a85cb719c195c4dc77fba6a89` and `sdl2_pango` recipe at AUR commit `12ec613e4e9bf14859f213e60c062604ac3b33d5` are overlaid into `omarchy-pkgs`; SDL2_Pango source is fixed to commit `3afd884fddf8d81dbe2c140135deea0c79de31c1`. The local-source builder builds `sdl2_pango` first, installs its exact artifact into the package-build container before Tux Paint dependency resolution, and retains both exact artifacts in the offline mirror while excluding both from online resolution.
 10. **Native curfew.** A systemd timer enforces only the settled 16:00–20:00 advisory window. `timekpr-next` and unspecified daily quotas are absent.
 11. **Trimmed target.** The target manifest retains the four apps, Hyprland/Quickshell, SDDM, NetworkManager, audio, portals, fonts, brightness, zram, and the small set of commands Quattro's current system/user finalizers execute. Bay Trail graphics use kernel `i915`/modesetting, Mesa OpenGL, and legacy i965 VA-API; unsupported iHD, oneVPL, and Vulkan packages and stages are absent. Adult development tools and irrelevant hardware service setup are removed from the target path; the firewall uses a minimal native UFW policy rather than the omitted Docker integration.
 12. **Arch Chromium policy.** Policy is package-owned at `/etc/chromium/policies/managed/omakid.json`; localhost Stories is explicitly allowed.
@@ -44,8 +44,8 @@ Release preparation omits `--skip-content`. Full ISO building requires x86_64 Li
 - Bare package manifests, the bounded Bay Trail Mesa/i965 stack, and absence of unsupported modern Intel graphics/media packages.
 - An ISO workflow supporting manual dispatch once registered on the default branch plus pushes only to `build/omakid-quattro-iso`, with no schedule or pull-request trigger, and with `xorriso` BIOS and UEFI El Torito gates before checksum/upload.
 - Current Quattro Lua wiring, locked Home/media/brightness bindings, one PanelWindow, and bounded geometry.
-- Stable paths, current Chromium policy path, RCC date-time matching, reviewed Tux Paint source, and no unresolved markers in shipped paths.
-- Prepared-source contracts for runtime payload, setup form, package manifests, Tux Paint builder integration, and fetched offline content.
+- Stable paths, current Chromium policy path, RCC date-time matching, pinned Tux Paint/SDL2_Pango provenance, and no unresolved markers in shipped paths.
+- Prepared-source contracts for runtime payload, setup form, package manifests, SDL2_Pango-before-Tux-Paint build/install handoff, exact offline artifact retention, online-resolution filtering, and fetched offline content.
 - `git diff --check` and repository status review.
 
 ## Remaining physical gates

@@ -1,0 +1,35 @@
+# Contributor: Jan Alexander Steffens (heftig) <jan.steffens@gmail.com>
+# Contributor: Allan McRae <allan@archlinux.com>
+# Contributor: gyo <nucleogeek@gmail.com>
+
+pkgname=sdl2_pango
+pkgver=2.1.5
+pkgrel=1
+pkgdesc="Connects Pango to SDL2"
+arch=("x86_64")
+url="https://github.com/markuskimius/SDL2_Pango"
+license=("LGPL-2.1-only")
+depends=("pango" "freetype2" "sdl2")
+makedepends=("git")
+_commit=3afd884fddf8d81dbe2c140135deea0c79de31c1
+source=("sdl2_pango-$_commit::git+$url.git#commit=$_commit" "freetype2.patch")
+# makepkg cannot checksum a VCS source; the full commit fragment above pins the
+# exact Git tree. The vendored patch uses its real content checksum.
+sha256sums=('SKIP'
+            '48eb16064e219b6105ec934501539ee1ee371207566f9cc384bcca94a9abb74f')
+
+prepare() {
+  cd "$srcdir/$pkgname-$_commit"
+  patch -Np1 < "../freetype2.patch"
+}
+
+build() {
+  cd "$srcdir/$pkgname-$_commit"
+  ./configure --prefix=/usr
+  make
+}
+
+package() {
+  cd "$srcdir/$pkgname-$_commit"
+  make DESTDIR="$pkgdir" install
+}

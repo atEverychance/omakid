@@ -8,7 +8,7 @@ The child surface is four large activities — Painting, Letters, Games, and Sto
 
 ## Why an overlay
 
-This repository does not copy Omarchy wholesale. `build/prepare.sh` validates three exact upstream revisions, overlays only Omakid-owned files, adds the reviewed Tux Paint package recipe, and patches the current ISO local-source builder contract. Upstream revisions are explicit in `build/upstream.env`; drift fails with an actionable error instead of producing an unreviewed image.
+This repository does not copy Omarchy wholesale. `build/prepare.sh` validates three exact upstream revisions, overlays only Omakid-owned files, adds the reviewed Tux Paint and SDL2_Pango package recipes, and patches the current ISO local-source builder contract. Upstream revisions and AUR/source provenance are explicit in `build/upstream.env`; drift fails with an actionable error instead of producing an unreviewed image.
 
 Prepared payload paths are package-owned:
 
@@ -59,7 +59,7 @@ NO_BOOT_OFFER=1 ./bin/omarchy-iso-make --local-source ../omarchy ../omarchy-pkgs
 sha256sum release/*.iso > release/omakid.iso.sha256
 ```
 
-The GitHub Actions workflow can be run manually once it is registered on the default branch, and it also runs on pushes only to the reviewed `build/omakid-quattro-iso` branch. It has no schedule or pull-request trigger because each build is large and slow. Before it generates the checksum or uploads artifacts, `xorriso` must read the image and report both BIOS and UEFI El Torito boot entries. The workflow does not publish a release.
+The GitHub Actions workflow can be run manually once it is registered on the default branch, and it also runs on pushes only to the reviewed `build/omakid-quattro-iso` branch. It has no schedule or pull-request trigger because each build is large and slow. Before it generates the checksum or uploads artifacts, `xorriso` must read the image and report both BIOS and UEFI El Torito boot entries. The workflow does not publish a release. Its local package builder builds the pinned `sdl2_pango` AUR dependency before Tux Paint, installs that exact local artifact into the package-build container for the Tux Paint build, and retains both exact packages in the target's offline mirror.
 
 ## Offline content
 

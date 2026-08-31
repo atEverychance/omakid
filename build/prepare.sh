@@ -100,11 +100,13 @@ else
   echo "WARNING: content fetch skipped; this prepared tree must not be used to build a release ISO." >&2
 fi
 
-# Reviewed AUR recipe is built in the ISO container and inserted into its local
-# offline mirror alongside local-source Omarchy packages.
-rm -rf "$pkgs/pkgbuilds/tuxpaint"
-mkdir -p "$pkgs/pkgbuilds/tuxpaint"
-cp -a "$root/packages/tuxpaint/." "$pkgs/pkgbuilds/tuxpaint/"
+# Reviewed AUR recipes are built in dependency order in the ISO container and
+# inserted into its local offline mirror alongside local-source Omarchy packages.
+for package_name in sdl2_pango tuxpaint; do
+  rm -rf "$pkgs/pkgbuilds/$package_name"
+  mkdir -p "$pkgs/pkgbuilds/$package_name"
+  cp -a "$root/packages/$package_name/." "$pkgs/pkgbuilds/$package_name/"
+done
 
 patch="$root/build/patches/omarchy-iso-local-packages.patch"
 if git -C "$iso" apply --check "$patch" 2>/dev/null; then

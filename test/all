@@ -16,6 +16,7 @@ for path in [
     Path('home/.config/omakid/tiles.json'),
     Path('system/etc/chromium/policies/managed/omakid.json'),
     Path('packages/tuxpaint/.omarchy/package.json'),
+    Path('packages/sdl2_pango/.omarchy/package.json'),
 ]:
     json.loads(path.read_text())
 PY
@@ -140,8 +141,108 @@ check "Arch Chromium policy path is correct" sh -c \
   "test -f system/etc/chromium/policies/managed/omakid.json && test ! -e system/etc/opt/chrome/policies/managed/omakid.json"
 check "native curfew has no daily quota" sh -c \
   "grep -q 'hour >= 16 && hour < 20' bin/omakid-curfew && grep -q 'OnUnitActiveSec=60s' system/etc/systemd/system/omakid-curfew.timer && ! grep -Rqs timekpr bin install system"
-check "reviewed Tux Paint package overlay exists" sh -c \
-  "test -s packages/tuxpaint/PKGBUILD && grep -q '^pkgver=0.9.35' packages/tuxpaint/PKGBUILD && grep -q 'd77a0cdd57b3651a85cb719c195c4dc77fba6a89' packages/tuxpaint/.omarchy/package.json"
+check "reviewed local package provenance is exact and immutable" python3 - <<'PY'
+import hashlib
+import json
+from pathlib import Path
+
+refs = {}
+for line in Path('build/upstream.env').read_text().splitlines():
+    if line and not line.startswith('#'):
+        key, value = line.split('=', 1)
+        refs[key] = value
+
+expected_aur = '12ec613e4e9bf14859f213e60c062604ac3b33d5'
+expected_source = '3afd884fddf8d81dbe2c140135deea0c79de31c1'
+expected_patch = '48eb16064e219b6105ec934501539ee1ee371207566f9cc384bcca94a9abb74f'
+package = Path('packages/sdl2_pango')
+pkgbuild = (package / 'PKGBUILD').read_text()
+metadata = json.loads((package / '.omarchy/package.json').read_text())
+provenance = (package / 'UPSTREAM.md').read_text()
+
+if refs.get('SDL2_PANGO_AUR_REF') != expected_aur:
+    raise SystemExit('build/upstream.env does not pin the reviewed sdl2_pango AUR commit')
+if refs.get('SDL2_PANGO_SOURCE_REF') != expected_source:
+    raise SystemExit('build/upstream.env does not pin the reviewed SDL2_Pango source commit')
+if metadata != {'source': 'aur', 'sync': False, 'upstream_commit': expected_aur}:
+    raise SystemExit(f'unexpected sdl2_pango package metadata: {metadata}')
+if f'_commit={expected_source}' not in pkgbuild:
+    raise SystemExit('PKGBUILD source commit differs from reviewed provenance')
+if 'git+$url.git#commit=$_commit' not in pkgbuild or '#branch=' in pkgbuild or '#tag=' in pkgbuild:
+    raise SystemExit('PKGBUILD must use the exact Git commit, never a mutable branch or tag')
+if pkgbuild.count("'SKIP'") != 1 or 'makepkg cannot checksum a VCS source' not in pkgbuild:
+    raise SystemExit('the sole VCS checksum exception must be narrow and documented')
+patch_hash = hashlib.sha256((package / 'freetype2.patch').read_bytes()).hexdigest()
+if patch_hash != expected_patch or expected_patch not in pkgbuild:
+    raise SystemExit('vendored patch does not match its real PKGBUILD checksum')
+for contributor in ('Jan Alexander Steffens', 'Allan McRae', 'gyo'):
+    if f'# Contributor: {contributor}' not in pkgbuild:
+        raise SystemExit(f'missing AUR contributor credit: {contributor}')
+if 'license=("LGPL-2.1-only")' not in pkgbuild:
+    raise SystemExit('sdl2_pango license declaration drifted')
+for value in (expected_aur, expected_source, 'LGPL-2.1-only', 'a190dc9c8043755d90f8b0a75fa66b9e42d4af4c980bf5ddc633f0124db3cee7'):
+    if value not in provenance:
+        raise SystemExit(f'UPSTREAM.md missing reviewed provenance value: {value}')
+
+tuxpaint = Path('packages/tuxpaint')
+tux_meta = json.loads((tuxpaint / '.omarchy/package.json').read_text())
+if tux_meta.get('upstream_commit') != refs.get('TUXPAINT_AUR_REF'):
+    raise SystemExit('Tux Paint metadata and pinned AUR reference disagree')
+if 'pkgver=0.9.35' not in (tuxpaint / 'PKGBUILD').read_text():
+    raise SystemExit('reviewed Tux Paint recipe is missing')
+PY
+check "ISO patch encodes the local dependency chain and exact keep-set" python3 - <<'PY'
+import re
+from pathlib import Path
+
+patch = Path('build/patches/omarchy-iso-local-packages.patch').read_text()
+iso_start = patch.index('diff --git a/builder/build-iso.sh')
+builder_start = patch.index('diff --git a/builder/build-omarchy-packages.sh')
+phases_start = patch.index('diff --git a/configs/', builder_start)
+iso_diff = patch[iso_start:builder_start]
+builder_diff = patch[builder_start:phases_start]
+
+# Read the effective lines represented by each diff hunk, excluding removals
+# and patch headers. This validates relationships, not mere name occurrence.
+def effective(diff):
+    lines = []
+    for line in diff.splitlines():
+        if line.startswith(('---', '+++', 'diff ', 'index ', '@@')) or line.startswith('-'):
+            continue
+        lines.append(line[1:] if line.startswith(('+', ' ')) else line)
+    return '\n'.join(lines)
+
+builder = effective(builder_diff)
+match = re.search(r'packages=\(\n(?P<body>.*?)\n\)', builder, re.S)
+if not match:
+    raise SystemExit('package build-order array is missing')
+order = [line.strip().strip('"') for line in match.group('body').splitlines() if line.strip()]
+if order != ['$OMARCHY_SETTINGS_PACKAGE', '$OMARCHY_RUNTIME_PACKAGE', 'sdl2_pango', 'tuxpaint']:
+    raise SystemExit(f'unsafe local package build order: {order}')
+makepkg = builder.index('makepkg --noconfirm --syncdeps --needed --skippgpcheck -f')
+handoff = builder.index('if [[ $pkg == sdl2_pango ]]; then', makepkg)
+install = builder.index('pacman -U --noconfirm "$sdl2_pango_package"', handoff)
+loop_end = builder.index('\ndone', install)
+if not makepkg < handoff < install < loop_end:
+    raise SystemExit('sdl2_pango is not installed immediately after its build and before Tux Paint')
+if 'sdl2_pango_package=$(find_exact_package sdl2_pango "$work_dir")' not in builder:
+    raise SystemExit('local dependency handoff does not identify the exact built package')
+for invariant in ('pacman -Qp "$candidate"', 'multiple builds found', 'build not found'):
+    if invariant not in builder:
+        raise SystemExit(f'exact local artifact validation missing: {invariant}')
+
+iso = effective(iso_diff)
+match = re.search(r'local_package_names=\(\n(?P<body>.*?)\n\)', iso, re.S)
+if not match:
+    raise SystemExit('local offline package keep-set is missing')
+keep_set = [line.strip().strip('"') for line in match.group('body').splitlines() if line.strip()]
+if keep_set != ['$OMARCHY_RUNTIME_PACKAGE', '$OMARCHY_SETTINGS_PACKAGE', 'sdl2_pango', 'tuxpaint']:
+    raise SystemExit(f'local package keep-set drifted: {keep_set}')
+if 'grep -Fxv -f <(printf \'%s\\n\' "${local_package_names[@]}")' not in iso:
+    raise SystemExit('online resolution is not filtered through the complete local keep-set')
+if 'for local_package_name in "${local_package_names[@]}"; do' not in iso:
+    raise SystemExit('offline artifact retention is not driven by the complete local keep-set')
+PY
 check "ISO workflow has exact dispatch and reviewed-branch push triggers plus BIOS/UEFI gates" python3 - <<'PY'
 from pathlib import Path
 
@@ -184,8 +285,53 @@ if [[ -n ${OMAKID_PREPARED_OMARCHY:-} || -n ${OMAKID_PREPARED_ISO:-} || -n ${OMA
     "test -s '$prepared_omarchy/shell/omakid/shell.qml' && test -s '$prepared_omarchy/shell/omakid/assets/voice/fr/stories.wav' && test -s '$prepared_omarchy/config/hypr/hyprland.lua'"
   check "prepared Quattro installer contract" sh -c \
     "test -s '$prepared_omarchy/install/provisioning/setup-form.sh' && cmp -s install/omakid-base.packages '$prepared_omarchy/install/omarchy-base.packages' && cmp -s install/hardware/all.sh '$prepared_omarchy/install/hardware/all.sh'"
-  check "prepared local Tux Paint builder contract" sh -c \
-    "test -s '$prepared_pkgs/pkgbuilds/tuxpaint/PKGBUILD' && grep -q 'tuxpaint' '$prepared_iso/builder/build-omarchy-packages.sh' && grep -q -- '--syncdeps' '$prepared_iso/builder/build-omarchy-packages.sh' && grep -q -- '-e tuxpaint' '$prepared_iso/builder/build-iso.sh'"
+  check "prepared local dependency chain and offline artifacts contract" python3 - "$prepared_pkgs" "$prepared_iso" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+source_packages = Path('packages')
+prepared_packages = Path(sys.argv[1]) / 'pkgbuilds'
+iso = Path(sys.argv[2])
+
+for name in ('sdl2_pango', 'tuxpaint'):
+    source = source_packages / name
+    prepared = prepared_packages / name
+    source_files = {path.relative_to(source) for path in source.rglob('*') if path.is_file()}
+    prepared_files = {path.relative_to(prepared) for path in prepared.rglob('*') if path.is_file()}
+    if source_files != prepared_files:
+        raise SystemExit(f'{name} overlay file set differs: {source_files ^ prepared_files}')
+    for relative in source_files:
+        if (source / relative).read_bytes() != (prepared / relative).read_bytes():
+            raise SystemExit(f'{name} overlay content differs: {relative}')
+
+builder = (iso / 'builder/build-omarchy-packages.sh').read_text()
+match = re.search(r'packages=\(\n(?P<body>.*?)\n\)', builder, re.S)
+order = [line.strip().strip('"') for line in match.group('body').splitlines() if line.strip()] if match else []
+if order != ['$OMARCHY_SETTINGS_PACKAGE', '$OMARCHY_RUNTIME_PACKAGE', 'sdl2_pango', 'tuxpaint']:
+    raise SystemExit(f'prepared build order is unsafe: {order}')
+makepkg = builder.index('makepkg --noconfirm --syncdeps --needed --skippgpcheck -f')
+handoff = builder.index('if [[ $pkg == sdl2_pango ]]; then', makepkg)
+install = builder.index('pacman -U --noconfirm "$sdl2_pango_package"', handoff)
+loop_end = builder.index('\ndone', install)
+if not makepkg < handoff < install < loop_end:
+    raise SystemExit('prepared builder lacks the pre-Tux-Paint local install handoff')
+if 'sdl2_pango_package=$(find_exact_package sdl2_pango "$work_dir")' not in builder:
+    raise SystemExit('prepared builder does not select the exact sdl2_pango artifact')
+
+build_iso = (iso / 'builder/build-iso.sh').read_text()
+match = re.search(r'local_package_names=\(\n(?P<body>.*?)\n\)', build_iso, re.S)
+keep_set = [line.strip().strip('"') for line in match.group('body').splitlines() if line.strip()] if match else []
+if keep_set != ['$OMARCHY_RUNTIME_PACKAGE', '$OMARCHY_SETTINGS_PACKAGE', 'sdl2_pango', 'tuxpaint']:
+    raise SystemExit(f'prepared offline keep-set drifted: {keep_set}')
+if 'grep -Fxv -f <(printf \'%s\\n\' "${local_package_names[@]}")' not in build_iso:
+    raise SystemExit('prepared online resolver does not exclude the complete local keep-set')
+if 'for local_package_name in "${local_package_names[@]}"; do' not in build_iso:
+    raise SystemExit('prepared mirror retention does not use the complete local keep-set')
+for invariant in ('pacman -Qp "$candidate"', 'multiple local builds found', 'local build not found'):
+    if invariant not in build_iso:
+        raise SystemExit(f'prepared mirror retention lacks exact-artifact invariant: {invariant}')
+PY
   check "prepared child session autologins without requiring encryption" sh -c \
     "grep -q 'if not ctx.defer_provisioning:' '$prepared_iso/configs/airootfs/usr/share/omarchy-iso/orchestrator/phases_impl.py' && grep -q \"Omakid.s child session is passwordless\" '$prepared_iso/configs/airootfs/usr/share/omarchy-iso/orchestrator/phases_impl.py' && ! grep -q 'if ctx.encrypt and not ctx.defer_provisioning:' '$prepared_iso/configs/airootfs/usr/share/omarchy-iso/orchestrator/phases_impl.py'"
   if [[ -d $prepared_omarchy/shell/omakid/content ]]; then

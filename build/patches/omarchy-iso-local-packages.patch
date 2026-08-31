@@ -1,6 +1,24 @@
+diff --git a/builder/build-iso.sh b/builder/build-iso.sh
+index db8daa2..96bc880 100755
 --- a/builder/build-iso.sh
 +++ b/builder/build-iso.sh
-@@ -196,7 +196,7 @@
+@@ -23,6 +23,15 @@ esac
+ : "${OMARCHY_NVIM_PACKAGE:=omarchy-nvim}"
+ export OMARCHY_RUNTIME_PACKAGE OMARCHY_SETTINGS_PACKAGE OMARCHY_NVIM_PACKAGE
+
++# Every package built from the mounted source trees. Keep this one list as the
++# source of truth for online filtering and exact offline-artifact retention.
++local_package_names=(
++  "$OMARCHY_RUNTIME_PACKAGE"
++  "$OMARCHY_SETTINGS_PACKAGE"
++  sdl2_pango
++  tuxpaint
++)
++
+ # Packages installed into the Arch container used to build the ISO.
+ pacman-key --init
+ pacman --noconfirm -Sy archlinux-keyring
+@@ -196,7 +205,7 @@ mapfile -t all_packages < <(
      grep -hv '^#\|^$' /builder/archinstall.packages
      # Always include the selected Omarchy packages so the target install can
      # find the runtime and companion packages in the offline mirror.
@@ -9,25 +27,29 @@
    } | sort -u
  )
 
-@@ -209,7 +209,7 @@
-       grep -Fxv \
-         -e "$OMARCHY_RUNTIME_PACKAGE" \
-         -e "$OMARCHY_SETTINGS_PACKAGE" \
+@@ -206,10 +215,7 @@ mapfile -t all_packages < <(
+ if [[ -n ${LOCAL_OMARCHY_BUILD:-} ]]; then
+   mapfile -t all_packages < <(
+     printf '%s\n' "${all_packages[@]}" |
+-      grep -Fxv \
+-        -e "$OMARCHY_RUNTIME_PACKAGE" \
+-        -e "$OMARCHY_SETTINGS_PACKAGE" \
 -        -e "$OMARCHY_NVIM_PACKAGE" || true
-+        -e tuxpaint || true
++      grep -Fxv -f <(printf '%s\n' "${local_package_names[@]}") || true
    )
  fi
 
-@@ -246,7 +246,7 @@
+@@ -245,8 +251,7 @@ mapfile -t required_package_files <<< "$resolved_package_files"
+ # checkouts. Add those exact artifacts back to the keep-set after verifying
  # that the local build left exactly one file for each selected package name.
  if [[ -n ${LOCAL_OMARCHY_BUILD:-} ]]; then
-   for local_package_name in \
+-  for local_package_name in \
 -    "$OMARCHY_RUNTIME_PACKAGE" "$OMARCHY_SETTINGS_PACKAGE" "$OMARCHY_NVIM_PACKAGE"; do
-+    "$OMARCHY_RUNTIME_PACKAGE" "$OMARCHY_SETTINGS_PACKAGE" tuxpaint; do
++  for local_package_name in "${local_package_names[@]}"; do
      local_package_file=""
      for candidate in "$offline_mirror_dir/$local_package_name-"*.pkg.tar.*; do
        [[ -f $candidate && $candidate != *.sig ]] || continue
-@@ -304,8 +304,7 @@
+@@ -304,8 +309,7 @@ resolve_expected_packages() {
        # install time, not the build-time source it came from.
        grep -hv '^#\|^$' \
          "$build_cache_dir/airootfs/usr/share/omarchy-iso/omarchy-base.packages"
@@ -37,35 +59,71 @@
      } | sort -u
    )
 
+diff --git a/builder/build-omarchy-packages.sh b/builder/build-omarchy-packages.sh
+index 5f7173f..56d12ec 100755
 --- a/builder/build-omarchy-packages.sh
 +++ b/builder/build-omarchy-packages.sh
-@@ -39,7 +39,7 @@
+@@ -39,9 +39,29 @@ pacman -Sy --noconfirm
  packages=(
    "$OMARCHY_SETTINGS_PACKAGE"
    "$OMARCHY_RUNTIME_PACKAGE"
 -  "$OMARCHY_NVIM_PACKAGE"
++  sdl2_pango
 +  tuxpaint
  )
 
++find_exact_package() {
++  local package_name=$1 directory=$2 candidate candidate_name found=
++  for candidate in "$directory"/*.pkg.tar.*; do
++    [[ -f $candidate && $candidate != *.sig ]] || continue
++    read -r candidate_name _ < <(pacman -Qp "$candidate" 2>/dev/null) || continue
++    [[ $candidate_name == "$package_name" ]] || continue
++    if [[ -n $found ]]; then
++      echo "ERROR: multiple builds found for $package_name in $directory" >&2
++      return 1
++    fi
++    found=$candidate
++  done
++  if [[ -z $found ]]; then
++    echo "ERROR: build not found for $package_name in $directory" >&2
++    return 1
++  fi
++  printf '%s\n' "$found"
++}
++
  # Local-source packages must replace every cached build of the same package,
-@@ -65,7 +65,7 @@
+ # even when the checkout's generated pkgver sorts below a published build.
+ # Otherwise the later generic cache pruning can silently keep edge instead.
+@@ -65,8 +85,15 @@ for pkg in "${packages[@]}"; do
      cd '$pkg_work' &&
      PKGDEST='$work_dir' \
      OMARCHY_SRC=/omarchy-source \
 -    makepkg --noconfirm --skippgpcheck --skipchecksums --nodeps -f
 +    makepkg --noconfirm --syncdeps --needed --skippgpcheck -f
    "
++
++  # Tux Paint's sdl2_pango dependency is local too. Install the exact artifact
++  # into this package-build container before makepkg resolves Tux Paint.
++  if [[ $pkg == sdl2_pango ]]; then
++    sdl2_pango_package=$(find_exact_package sdl2_pango "$work_dir")
++    pacman -U --noconfirm "$sdl2_pango_package"
++  fi
  done
 
-@@ -82,4 +82,4 @@
+ mkdir -p "$offline_mirror_dir"
+@@ -82,4 +109,6 @@ done
 
  echo
  echo "Built Omarchy packages, placed in $offline_mirror_dir:"
 -ls "$offline_mirror_dir"/omarchy*.pkg.tar.zst | sed 's|^|  |'
-+ls "$offline_mirror_dir"/{omarchy-dev,omarchy-settings-dev,tuxpaint}-*.pkg.tar.zst | sed 's|^|  |'
++for pkg in "${packages[@]}"; do
++  find_exact_package "$pkg" "$offline_mirror_dir"
++done | sed 's|^|  |'
+diff --git a/configs/airootfs/usr/share/omarchy-iso/orchestrator/phases_impl.py b/configs/airootfs/usr/share/omarchy-iso/orchestrator/phases_impl.py
+index 6d48624..4e04aa3 100644
 --- a/configs/airootfs/usr/share/omarchy-iso/orchestrator/phases_impl.py
 +++ b/configs/airootfs/usr/share/omarchy-iso/orchestrator/phases_impl.py
-@@ -150,11 +150,9 @@
+@@ -150,11 +150,9 @@ def _early_user_seed_packages() -> list[str]:
 
 
  def _early_packages() -> list[str]:
