@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Native advisory curfew only. There is deliberately no daily quota.
+set -euo pipefail
+hour=$((10#$(date +%H)))
+if (( hour >= 16 && hour < 20 )); then
+  systemctl stop sddm.service
+else
+  systemctl start sddm.service
+fi

@@ -1,15 +1,12 @@
 #!/usr/bin/env bash
-# Launch an app in the currently selected language.
 set -euo pipefail
-SEL=$(cat ~/.local/state/omakid/lang 2>/dev/null || echo en)
-
-case "$SEL" in
+(( $# > 0 )) || { echo "usage: omakid-launch command [args...]" >&2; exit 2; }
+sel=$(cat "${XDG_STATE_HOME:-$HOME/.local/state}/omakid/lang" 2>/dev/null || printf en)
+case "$sel" in
   fr) export LANG=fr_CA.UTF-8 LC_ALL=fr_CA.UTF-8 ;;
-  *)  export LANG=en_CA.UTF-8 LC_ALL=en_CA.UTF-8 ;;
+  *) export LANG=en_CA.UTF-8 LC_ALL=en_CA.UTF-8 ;;
 esac
-
-# apps that persist locale in their own config get the file swapped
-[[ -f ~/.config/omakid/klettresrc.$SEL ]] && \
-  cp ~/.config/omakid/klettresrc.$SEL ~/.config/klettresrc
-
+if [[ -f "$HOME/.config/omakid/klettresrc.$sel" ]]; then
+  cp "$HOME/.config/omakid/klettresrc.$sel" "$HOME/.config/klettresrc"
+fi
 exec "$@"

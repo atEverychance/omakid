@@ -1,0 +1,7 @@
+# Offline-only hardware/install packages for the Dell Inspiron 3531 target.
+btrfs-progs
+libva-intel-driver
+qt6-wayland
+snapper
+thermald
+zram-generator

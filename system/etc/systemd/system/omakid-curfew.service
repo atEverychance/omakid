@@ -1,0 +1,6 @@
+[Unit]
+Description=Apply Omakid's advisory 16:00-20:00 graphical-session curfew
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/omakid-curfew

@@ -1,0 +1,88 @@
+name: Build Omakid ISO
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-iso:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout Omakid overlay
+        uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
+          docker system prune --all --force || true
+          df -h /
+
+      - name: Install host tools
+        run: sudo apt-get update && sudo apt-get install --yes wget xorriso
+
+      - name: Checkout reviewed upstream revisions
+        shell: bash
+        run: |
+          set -euo pipefail
+          source build/upstream.env
+          mkdir -p upstream
+          checkout_exact() {
+            local url=$1 ref=$2 path=$3
+            git init "$path"
+            git -C "$path" remote add origin "$url"
+            git -C "$path" fetch --depth 1 origin "$ref"
+            git -C "$path" checkout --detach FETCH_HEAD
+          }
+          checkout_exact "$OMARCHY_URL" "$OMARCHY_REF" upstream/omarchy
+          checkout_exact "$OMARCHY_ISO_URL" "$OMARCHY_ISO_REF" upstream/omarchy-iso
+          checkout_exact "$OMARCHY_PKGS_URL" "$OMARCHY_PKGS_REF" upstream/omarchy-pkgs
+
+      - name: Validate overlay and prepare local sources
+        run: |
+          ./test/all
+          ./build/prepare.sh \
+            --omarchy "$PWD/upstream/omarchy" \
+            --iso "$PWD/upstream/omarchy-iso" \
+            --pkgs "$PWD/upstream/omarchy-pkgs"
+          OMAKID_PREPARED_OMARCHY="$PWD/upstream/omarchy" \
+          OMAKID_PREPARED_ISO="$PWD/upstream/omarchy-iso" \
+          OMAKID_PREPARED_PKGS="$PWD/upstream/omarchy-pkgs" \
+            ./test/all
+
+      - name: Build x86_64 ISO from local sources
+        working-directory: upstream/omarchy-iso
+        env:
+          NO_BOOT_OFFER: "1"
+        run: ./bin/omarchy-iso-make --no-cache --local-source ../omarchy ../omarchy-pkgs
+
+      - name: Validate ISO boot structure and generate SHA256
+        working-directory: upstream/omarchy-iso/release
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          isos=(*.iso)
+          [[ ${#isos[@]} -eq 1 ]]
+          iso=${isos[0]}
+
+          el_torito=$(LC_ALL=C xorriso -indev "$iso" -report_el_torito plain 2>&1)
+          printf '%s\n' "$el_torito"
+          grep -Eq 'El Torito boot img[[:space:]]*:.*BIOS' <<<"$el_torito"
+          grep -Eq 'El Torito boot img[[:space:]]*:.*UEFI' <<<"$el_torito"
+
+          sha256sum "$iso" > "$iso.sha256"
+          sha256sum --check "$iso.sha256"
+
+      - name: Upload ISO and checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: omakid-iso-${{ github.run_number }}
+          path: |
+            upstream/omarchy-iso/release/*.iso
+            upstream/omarchy-iso/release/*.iso.sha256
+          if-no-files-found: error
+          retention-days: 7

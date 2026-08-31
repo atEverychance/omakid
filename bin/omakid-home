@@ -1,8 +1,18 @@
 #!/usr/bin/env bash
-# The only escape hatch a six-year-old needs.
+# The single physical escape hatch: reveal (or recover) home, then close activity apps.
 set -euo pipefail
+
+if ! omakid-shell home >/dev/null 2>&1; then
+  if ! pgrep -f 'quickshell.*usr/share/omarchy/shell/omakid' >/dev/null; then
+    uwsm-app -- omakid-shell run >/dev/null 2>&1 &
+  fi
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    omakid-shell home >/dev/null 2>&1 && break
+    sleep 0.1
+  done
+  omakid-shell home >/dev/null
+fi
+
 for app in tuxpaint klettres gcompris-qt chromium; do
   pkill -x "$app" 2>/dev/null || true
 done
-pgrep -f 'quickshell.*omakid' >/dev/null || \
-  (quickshell -c omakid &>/dev/null &)

@@ -1,53 +1,10 @@
 #!/usr/bin/env bash
-# Idempotent. Run after pacman, or never.
+# Idempotent package-state repair; package files remain the source of truth.
 set -euo pipefail
-REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-KID=${OMAKID_USER:-kid}
-KID_HOME=$(getent passwd "$KID" | cut -d: -f6)
-
-[[ -n "$KID_HOME" ]] || { echo "no such user: $KID" >&2; exit 1; }
-
-# --- her config: symlink, so repo edits are live ---------------------
-while IFS= read -r -d '' src; do
-  dest="$KID_HOME/${src#"$REPO"/home/}"
-  mkdir -p "$(dirname "$dest")"
-  ln -sfn "$src" "$dest"
-done < <(find "$REPO/home" -type f -print0)
-chown -R "$KID:$KID" "$KID_HOME/.config" "$KID_HOME/.local" 2>/dev/null || true
-
-# --- assets to a stable system path ---------------------------------
-install -d /usr/share/omakid
-cp -r "$REPO/assets" /usr/share/omakid/
-
-# --- system files: root-owned ---------------------------------------
-if [[ -d "$REPO/system" ]]; then
-  while IFS= read -r -d '' src; do
-    install -Dm644 -o root -g root "$src" "/${src#"$REPO"/system/}"
-  done < <(find "$REPO/system" -type f -print0)
-fi
-
-# --- kid themes into her Omarchy theme dir --------------------------
-if [[ -d "$REPO/themes" ]]; then
-  install -d "$KID_HOME/.config/omarchy/themes"
-  cp -r "$REPO"/themes/omakid-* "$KID_HOME/.config/omarchy/themes/"
-  chown -R "$KID:$KID" "$KID_HOME/.config/omarchy"
-fi
-
-# --- scripts on PATH ------------------------------------------------
-install -Dm755 "$REPO"/bin/omakid-* -t /usr/local/bin/
-
-# --- re-enforce the advisory layer ----------------------------------
-# NOTE: kid keeps sudo, by design. These are speed bumps, not walls.
-chattr +i /etc/resolv.conf 2>/dev/null || true
-systemctl enable --now timekpr systemd-resolved 2>/dev/null || true
-
-hyprctl -i 0 reload 2>/dev/null || true
-
-# --- first boot only: let her choose a colour and an animal ----------
-# The Me picker is a permanent affordance (her avatar, top-left corner).
-# This single line is the only thing that makes it "first-run".
-if [[ ! -f "$KID_HOME/.local/state/omakid/colour" ]]; then
-  su - "$KID" -c 'omakid-me' &>/dev/null &
-fi
-
-echo "applied."
+(( EUID == 0 )) || { echo "omakid-apply must run as root" >&2; exit 1; }
+[[ -r /usr/share/omarchy/shell/omakid/shell.qml ]] || { echo "Omakid package payload is missing" >&2; exit 1; }
+systemctl daemon-reload
+systemctl enable --now systemd-resolved.service NetworkManager.service power-profiles-daemon.service systemd-oomd.service omakid-curfew.timer
+systemctl enable sddm.service
+systemctl disable --now cups.service avahi-daemon.service docker.socket 2>/dev/null || true
+printf 'Omakid package state applied. User config remains package-owned through /etc/skel.\n'

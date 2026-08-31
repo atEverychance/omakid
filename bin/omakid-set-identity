@@ -1,35 +1,31 @@
 #!/usr/bin/env bash
-# Apply an identity choice. Called by the Me picker on every tap.
-# Usage: omakid-set-identity colour <id> | avatar <id> | name <string>
 set -euo pipefail
-STATE="${XDG_STATE_HOME:-$HOME/.local/state}/omakid"
-ASSETS="${OMAKID_ASSETS:-/usr/share/omakid/assets}"
-mkdir -p "$STATE"
+state="${XDG_STATE_HOME:-$HOME/.local/state}/omakid"
+mkdir -p "$state"
 
-case "${1:?colour|avatar|name}" in
+case "${1:-}" in
   colour)
-    ID="${2:?}"
-    echo "$ID" > "$STATE/colour"
-    # delegate to Omarchy's theme engine; don't reinvent it
-    omarchy-theme-set "omakid-$ID" 2>/dev/null || \
-      echo "WARN: theme omakid-$ID not installed" >&2
+    case "${2:-}" in pink-light|blue-light|pink-bright|blue-bright|purple|gold) ;; *) echo "unknown Omakid colour" >&2; exit 2 ;; esac
+    printf '%s\n' "$2" > "$state/colour"
+    OMARCHY_THEME_HEADLESS=1 omarchy-theme-set "omakid-$2"
     ;;
   avatar)
-    ID="${2:?}"
-    echo "$ID" > "$STATE/avatar"
-    # The main shell watches this file and changes the corner avatar live.
+    case "${2:-}" in orca|elephant|bunny|jellyfish|panther|bear) ;; *) echo "unknown Omakid avatar" >&2; exit 2 ;; esac
+    printf '%s\n' "$2" > "$state/avatar"
     ;;
   name)
-    NAME="${2:?}"
-    echo "$NAME" > "$STATE/name"
-    # eight feet tall in animated ASCII — she can't read a greeting,
-    # but she can absolutely recognise her own name
+    name=${2:-}
+    [[ -n "$name" ]] || { echo "name must not be empty" >&2; exit 2; }
+    printf '%s\n' "$name" > "$state/name"
     mkdir -p "$HOME/.config/omarchy/branding"
     if command -v figlet >/dev/null; then
-      figlet -f big "$NAME" > "$HOME/.config/omarchy/branding/screensaver.txt"
+      figlet -f big "$name" > "$HOME/.config/omarchy/branding/screensaver.txt"
     else
-      printf '%s\n' "$NAME" > "$HOME/.config/omarchy/branding/screensaver.txt"
+      printf '%s\n' "$name" > "$HOME/.config/omarchy/branding/screensaver.txt"
     fi
     ;;
-  *) echo "usage: omakid-set-identity colour|avatar|name <value>" >&2; exit 1 ;;
+  *)
+    echo "usage: omakid-set-identity colour|avatar|name value" >&2
+    exit 2
+    ;;
 esac

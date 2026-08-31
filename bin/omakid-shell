@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+payload=${OMAKID_PAYLOAD:-/usr/share/omarchy/shell/omakid}
+
+case "${1:-}" in
+  run)
+    [[ -r "$payload/shell.qml" ]] || { echo "Omakid shell payload missing: $payload/shell.qml" >&2; exit 1; }
+    if [[ ! -s "${XDG_STATE_HOME:-$HOME/.local/state}/omakid/colour" ]]; then
+      export OMAKID_FIRST_RUN=1
+    fi
+    export QS_DISABLE_FILE_WATCHER=1 QS_NO_RELOAD_POPUP=1
+    exec quickshell -n -p "$payload"
+    ;;
+  home|identity|hide|ping)
+    target=$1
+    exec timeout --kill-after=1s 2s qs ipc -n -p "$payload" call -- omakid "$target"
+    ;;
+  *)
+    echo "usage: omakid-shell run|home|identity|hide|ping" >&2
+    exit 2
+    ;;
+esac

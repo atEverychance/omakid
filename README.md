@@ -1,70 +1,86 @@
 # Omakid
 
-A kid-first Linux distribution for **pre-readers**, forked from [Omarchy](https://omarchy.org).
+Omakid is a picture-first, offline-capable child desktop built as a deterministic overlay on reviewed Omarchy Quattro sources. It targets two Dell Inspiron 15-3531 (P28F005) laptops with Intel Bay Trail hardware, 4 GB RAM, 1366×768 displays, trackpads, and mechanical hard drives.
 
-Built for two old x86_64 laptops, trackpad only, two girls aged 6 and 7 who don't read yet,
-English and Canadian French.
-
-## The idea
-
-Omarchy's plumbing is excellent — archiso builder, btrfs snapshots, Limine, offline mirrors,
-unattended installs. Its *interface* is the exact wrong half for a five-year-old: fuzzy-search
-launchers, keybind chords, TUI apps. All text, all the time.
-
-So Omakid keeps the plumbing and throws the shell away. What replaces it is a grid of four
-large pictures that **speak their own names** when you point at them.
+The child surface is four large activities — Painting, Letters, Games, and Stories — with pre-recorded English and Canadian French labels. A chosen animal opens the permanent colour/avatar picker. A lone Super-key release always returns home.
 
 ![First-run target](assets/mockups/first-run-target.png)
 
-## Design axioms
+## Why an overlay
 
-1. Nothing requires reading.
-2. One app, fullscreen, always.
-3. One way home — a single key, from anywhere.
-4. Five tiles maximum.
-5. Updates are manual.
-6. The locks are speed bumps, not walls.
-7. Choice creates ownership — she picks her colour and her animal, and can change them forever.
+This repository does not copy Omarchy wholesale. `build/prepare.sh` validates three exact upstream revisions, overlays only Omakid-owned files, adds the reviewed Tux Paint package recipe, and patches the current ISO local-source builder contract. Upstream revisions are explicit in `build/upstream.env`; drift fails with an actionable error instead of producing an unreviewed image.
 
-## The stack
+Prepared payload paths are package-owned:
 
-| Tile | App | Source |
-|---|---|---|
-| Painting | Tux Paint | AUR |
-| Letters | KLettres — alphabet→syllables, kid mode, EN + FR sounds | Arch Extra |
-| Games | GCompris — 100+ activities, ages 2–10 | Arch Extra |
-| Stories | [Storybooks Canada](https://www.storybookscanada.ca/) mirror — CC BY 4.0, line-level read-aloud audio in EN + FR | local kiosk |
+- launcher and assets: `/usr/share/omarchy/shell/omakid`
+- offline content: `/usr/share/omarchy/shell/omakid/content`
+- user defaults: `/etc/skel` via current `omarchy-settings-dev`
+- Chromium policy: `/etc/chromium/policies/managed/omakid.json`
 
-## Make it yours
+## Bay Trail hardware boundary
 
-Her animal sits in the top-left corner. Tapping it opens a two-screen picker —
-six shared flat colours — light pink, light blue, bright pink, bright blue,
-purple and gold — then an orca, elephant, bunny, jellyfish, panther or bear.
-No reading, no gradients, instant feedback. The colour drives an
-Omarchy theme; the animal reaches the login screen and boot splash; her name,
-if she wants to type it, ends up eight feet tall in the animated ASCII
-screensaver.
+The target uses the kernel `i915` driver and modesetting with Mesa OpenGL and the legacy `libva-intel-driver` (`i965`). It does not install the unsupported modern Intel iHD media, oneVPL, or Vulkan stacks. Omakid's four apps require OpenGL, not Vulkan.
 
-It auto-opens once on first boot and lives there permanently after. A
-six-year-old's favourite colour has a half-life of about three weeks, so a
-one-time setup wizard would have been the wrong shape.
-
-## Read the plan
-
-**[plan.md](plan.md)** — the whole build, 14 sections, ready to execute.
-
-## Quick reference
+## Local validation on macOS
 
 ```bash
-# build the ISO
-OMARCHY_INSTALLER_REPO="atEverychance/omakid" ./bin/omarchy-iso-make
-
-# on the laptop, after any system update
-sudo pacman -Syu && sudo omakid-apply && omakid-check
+./test/all
 ```
 
-## Licence
+A static preparation test against fresh local checkouts can skip the large content mirror:
 
-Plan and scripts: MIT. Tile artwork: generated, use freely.
-Bundled content belongs to its authors — GCompris (GPLv3), KLettres (GPLv2),
-Storybooks Canada (CC BY 4.0).
+```bash
+./build/prepare.sh \
+  --omarchy /path/to/omarchy \
+  --iso /path/to/omarchy-iso \
+  --pkgs /path/to/omarchy-pkgs \
+  --skip-content
+
+OMAKID_PREPARED_OMARCHY=/path/to/omarchy \
+OMAKID_PREPARED_ISO=/path/to/omarchy-iso \
+OMAKID_PREPARED_PKGS=/path/to/omarchy-pkgs \
+  ./test/all
+```
+
+`--skip-content` is only for static validation. It must not be used for a release ISO.
+
+## Full x86_64 build
+
+On x86_64 Linux with Docker:
+
+```bash
+./build/prepare.sh \
+  --omarchy "$PWD/upstream/omarchy" \
+  --iso "$PWD/upstream/omarchy-iso" \
+  --pkgs "$PWD/upstream/omarchy-pkgs"
+
+cd upstream/omarchy-iso
+NO_BOOT_OFFER=1 ./bin/omarchy-iso-make --local-source ../omarchy ../omarchy-pkgs
+sha256sum release/*.iso > release/omakid.iso.sha256
+```
+
+The GitHub Actions workflow is manual-only because each build is large and slow. Before it generates the checksum or uploads artifacts, `xorriso` must read the image and report both BIOS and UEFI El Torito boot entries. The workflow does not publish a release.
+
+## Offline content
+
+`build/fetch-content.sh` fails closed unless it obtains and validates:
+
+- current date-stamped English and French GCompris voice RCCs;
+- the GCompris words and OGG background-music RCCs;
+- at least 40 English and 40 French Storybooks Canada titles plus narration.
+
+Content licensing and source URLs are retained in generated and bundled attribution files.
+
+## Advisory curfew
+
+A native systemd timer evaluates the settled 16:00–20:00 curfew every minute by stopping or starting SDDM. There is deliberately no daily quota and no `timekpr-next` dependency. This is a family default, not a security boundary.
+
+## Documentation
+
+- [PRODUCT.md](PRODUCT.md) — users, purpose, product principles, and accessibility
+- [DESIGN.md](DESIGN.md) — current visual and interaction system
+- [plan.md](plan.md) — implemented architecture, verification, and remaining real-device work
+
+## License
+
+Omakid code and project documentation are MIT licensed. Bundled and fetched third-party assets retain their upstream licenses; see [assets/ATTRIBUTION.md](assets/ATTRIBUTION.md) and the generated offline-content attribution.

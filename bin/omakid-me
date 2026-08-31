@@ -1,11 +1,3 @@
 #!/usr/bin/env bash
-# The "Me" tile: pick a colour, pick an avatar, optionally own your name.
-#
-# Auto-opens once on first boot (see omakid-apply), then lives permanently
-# behind the avatar in the top-left corner. Never a wizard, never blocking,
-# infinitely re-runnable — a six-year-old's favourite colour has a half-life
-# of about three weeks.
 set -euo pipefail
-STATE="${XDG_STATE_HOME:-$HOME/.local/state}/omakid"
-mkdir -p "$STATE"
-exec quickshell -c omakid-me
+exec omakid-shell identity

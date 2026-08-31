@@ -1,0 +1,183 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+cd "$root"
+failures=0
+
+pass() { printf 'ok - %s\n' "$1"; }
+fail() { printf 'not ok - %s\n' "$1" >&2; failures=$((failures + 1)); }
+check() { local name=$1; shift; if "$@"; then pass "$name"; else fail "$name"; fi; }
+
+check "JSON assets and policies parse" python3 - <<'PY'
+import json
+from pathlib import Path
+for path in [
+    Path('home/.config/omakid/identity.json'),
+    Path('home/.config/omakid/tiles.json'),
+    Path('system/etc/chromium/policies/managed/omakid.json'),
+    Path('packages/tuxpaint/.omarchy/package.json'),
+]:
+    json.loads(path.read_text())
+PY
+
+bash_files=(build/*.sh bin/omakid-* install/config/*.sh install/hardware/*.sh install/post-install/*.sh install/user/*.sh test/all)
+for file in "${bash_files[@]}"; do
+  [[ -f $file ]] && bash -n "$file" || fail "bash syntax: $file"
+done
+pass "bash syntax"
+
+if command -v luac >/dev/null 2>&1; then
+  check "Lua syntax" sh -c 'for file in home/.config/hypr/*.lua; do luac -p "$file" || exit 1; done'
+fi
+
+check "package manifests contain bare package names" python3 - <<'PY'
+import re
+from pathlib import Path
+for path in [Path('install/omakid-base.packages'), Path('install/omakid-other.packages')]:
+    for number, line in enumerate(path.read_text().splitlines(), 1):
+        if not line or line.startswith('#'):
+            continue
+        if not re.fullmatch(r'[a-z0-9@._+-]+', line):
+            raise SystemExit(f'{path}:{number}: not a bare package name: {line!r}')
+PY
+
+check "trimmed target excludes retired runtime packages" sh -c \
+  "! grep -Eq '^(timekpr-next|xf86-video-intel|docker|neovim|lazygit|mise-bin)$' install/omakid-base.packages"
+check "Bay Trail keeps Mesa and i965 without modern Intel graphics ballast" python3 - <<'PY'
+from pathlib import Path
+
+paths = [Path('install/omakid-base.packages'), Path('install/omakid-other.packages')]
+packages = {
+    path: {line for line in path.read_text().splitlines() if line and not line.startswith('#')}
+    for path in paths
+}
+required = {'mesa', 'libva-intel-driver'}
+missing = required - packages[paths[0]]
+if missing:
+    raise SystemExit(f'missing Bay Trail packages from base manifest: {sorted(missing)}')
+unsupported = {
+    'intel-media-driver', 'libvpl', 'vpl-gpu-rt', 'vulkan-intel',
+    'linux-headers', 'pipewire-jack', 'sof-firmware', 'xf86-video-intel',
+}
+for path, manifest in packages.items():
+    found = unsupported & manifest
+    if found:
+        raise SystemExit(f'{path}: unsupported/unneeded target packages: {sorted(found)}')
+PY
+check "hardware pass avoids unsupported Bay Trail graphics and audio stages" sh -c \
+  "! grep -Eq 'hardware/(vulkan|intel/(video-acceleration|sof-firmware))\\.sh' install/hardware/all.sh"
+check "Quattro finalizer commands remain available" sh -c \
+  "grep -qx desktop-file-utils install/omakid-base.packages && grep -qx pciutils install/omakid-base.packages && grep -qx wireless-regdb install/omakid-base.packages && grep -qx xdg-user-dirs install/omakid-base.packages && grep -qx xdg-utils install/omakid-base.packages"
+check "trimmed firewall does not invoke omitted Docker tooling" sh -c \
+  "! grep -q 'config/firewall.sh' install/config/all.sh && grep -q 'ufw default deny incoming' install/config/omakid.sh && grep -q 'systemctl enable ufw.service' install/config/omakid.sh"
+
+check "required flags are real SVG files" sh -c \
+  "test -s assets/flags/en.svg && test -s assets/flags/fr.svg && grep -q '<svg' assets/flags/en.svg && grep -q '<svg' assets/flags/fr.svg"
+
+check "production WAV labels are versionable" sh -c \
+  "! git check-ignore -q assets/voice/en/paint.wav"
+
+check "34 required localized WAV labels exist" python3 - <<'PY'
+from pathlib import Path
+ids = ['paint','letters','games','stories','me']
+ids += [f'colour-{x}' for x in ['pink-light','blue-light','pink-bright','blue-bright','purple','gold']]
+ids += [f'avatar-{x}' for x in ['orca','elephant','bunny','jellyfish','panther','bear']]
+missing = [str(Path('assets/voice')/lang/f'{clip}.wav') for lang in ('en','fr') for clip in ids if not (Path('assets/voice')/lang/f'{clip}.wav').is_file() or (Path('assets/voice')/lang/f'{clip}.wav').stat().st_size < 1000]
+if missing:
+    raise SystemExit('missing/empty WAVs:\n' + '\n'.join(missing))
+PY
+
+if command -v ffprobe >/dev/null 2>&1; then
+  check "WAV files are mono 44.1 kHz PCM" sh -c '
+    for file in assets/voice/{en,fr}/*.wav; do
+      codec=$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of default=nw=1:nk=1 "$file")
+      rate=$(ffprobe -v error -select_streams a:0 -show_entries stream=sample_rate -of default=nw=1:nk=1 "$file")
+      channels=$(ffprobe -v error -select_streams a:0 -show_entries stream=channels -of default=nw=1:nk=1 "$file")
+      [[ $codec == pcm_s16le && $rate == 44100 && $channels == 1 ]] || exit 1
+    done'
+fi
+
+check "Quattro Lua owns the child session" sh -c \
+  "test -f home/.config/hypr/hyprland.lua && test ! -e home/.config/hypr/omakid.conf && grep -q 'require(\"hypr.bindings\")' home/.config/hypr/hyprland.lua && ! grep -q 'default.hypr.omarchy' home/.config/hypr/hyprland.lua"
+check "home and hardware keys are locked Lua bindings" sh -c \
+  "grep -q 'SUPER_L.*release = true.*locked = true' home/.config/hypr/bindings.lua && grep -q 'XF86AudioRaiseVolume.*locked = true' home/.config/hypr/bindings.lua && grep -q 'XF86MonBrightnessUp.*locked = true' home/.config/hypr/bindings.lua"
+check "adult shell is not started" sh -c \
+  "grep -q 'omakid-shell run' home/.config/hypr/autostart.lua && ! grep -Rqs 'omarchy-launch-shell' home/.config/hypr"
+
+check "one lifecycle-owned top-layer PanelWindow" sh -c \
+  "test \"\$(grep -c 'PanelWindow {' home/.config/quickshell/omakid/shell.qml)\" -eq 1 && grep -q 'visible: root.mode !== \"hidden\"' home/.config/quickshell/omakid/shell.qml && grep -q 'WlrLayershell.layer: WlrLayer.Overlay' home/.config/quickshell/omakid/shell.qml && grep -q 'WlrLayershell.keyboardFocus:.*WlrKeyboardFocus.Exclusive' home/.config/quickshell/omakid/shell.qml"
+check "motion has a reduced-motion path" sh -c \
+  "grep -q 'reducedMotion: root.reducedMotion' home/.config/quickshell/omakid/shell.qml && grep -q 'enabled: !tile.reducedMotion' home/.config/quickshell/omakid/Tile.qml"
+check "1366x768 layouts are bounded 2x2 and 3x2" sh -c \
+  "grep -q 'columns: 2' home/.config/quickshell/omakid/shell.qml && test \"\$(grep -c 'columns: 3' home/.config/quickshell/omakid/shell.qml)\" -eq 2 && grep -q 'width: 320' home/.config/quickshell/omakid/Tile.qml && grep -q 'height: 250' home/.config/quickshell/omakid/Tile.qml"
+check "QML braces are balanced" python3 - <<'PY'
+from pathlib import Path
+for path in Path('home/.config/quickshell/omakid').glob('*.qml'):
+    text=path.read_text()
+    if text.count('{') != text.count('}'):
+        raise SystemExit(f'unbalanced braces: {path}')
+PY
+
+check "runtime paths are package-owned and user-neutral" sh -c \
+  "! grep -RqsE '/usr/share/omakid|OMAKID_USER:-kid|/home/kid' bin home install system build packages && grep -q '/usr/share/omarchy/shell/omakid' bin/omakid-shell"
+check "RCC matching accepts full date-time suffixes" sh -c \
+  "grep -Fq \"voices-en-[0-9]{4}(-[0-9]{2}){5}\\.rcc\" build/fetch-content.sh && grep -Fq \"backgroundMusic-ogg-[0-9]{4}(-[0-9]{2}){5}\\.rcc\" build/fetch-content.sh"
+check "Arch Chromium policy path is correct" sh -c \
+  "test -f system/etc/chromium/policies/managed/omakid.json && test ! -e system/etc/opt/chrome/policies/managed/omakid.json"
+check "native curfew has no daily quota" sh -c \
+  "grep -q 'hour >= 16 && hour < 20' bin/omakid-curfew && grep -q 'OnUnitActiveSec=60s' system/etc/systemd/system/omakid-curfew.timer && ! grep -Rqs timekpr bin install system"
+check "reviewed Tux Paint package overlay exists" sh -c \
+  "test -s packages/tuxpaint/PKGBUILD && grep -q '^pkgver=0.9.35' packages/tuxpaint/PKGBUILD && grep -q 'd77a0cdd57b3651a85cb719c195c4dc77fba6a89' packages/tuxpaint/.omarchy/package.json"
+check "ISO workflow is manual-only and gates BIOS plus UEFI structure" python3 - <<'PY'
+from pathlib import Path
+
+path = Path('.github/workflows/build-iso.yml')
+text = path.read_text()
+lines = text.splitlines()
+start = lines.index('on:') + 1
+end = lines.index('permissions:')
+triggers = [
+    line.strip().removesuffix(':')
+    for line in lines[start:end]
+    if line.startswith('  ') and not line.startswith('    ')
+]
+if triggers != ['workflow_dispatch']:
+    raise SystemExit(f'{path}: expected only workflow_dispatch, found {triggers}')
+required = [
+    'apt-get install --yes wget xorriso',
+    '-report_el_torito plain',
+    "El Torito boot img[[:space:]]*:.*BIOS",
+    "El Torito boot img[[:space:]]*:.*UEFI",
+]
+missing = [snippet for snippet in required if snippet not in text]
+if missing:
+    raise SystemExit(f'{path}: missing ISO structure gates: {missing}')
+if text.index('-report_el_torito plain') > text.index('sha256sum "$iso"'):
+    raise SystemExit(f'{path}: ISO structure must be checked before SHA256 generation')
+PY
+check "no unresolved markers in shipped overlay paths" sh -c \
+  "! grep -RInsE 'TODO|FIXME|PLACEHOLDER' bin build home install packages system test --exclude=all"
+
+if [[ -n ${OMAKID_PREPARED_OMARCHY:-} || -n ${OMAKID_PREPARED_ISO:-} || -n ${OMAKID_PREPARED_PKGS:-} ]]; then
+  prepared_omarchy=${OMAKID_PREPARED_OMARCHY:?}
+  prepared_iso=${OMAKID_PREPARED_ISO:?}
+  prepared_pkgs=${OMAKID_PREPARED_PKGS:?}
+  check "prepared runtime payload contract" sh -c \
+    "test -s '$prepared_omarchy/shell/omakid/shell.qml' && test -s '$prepared_omarchy/shell/omakid/assets/voice/fr/stories.wav' && test -s '$prepared_omarchy/config/hypr/hyprland.lua'"
+  check "prepared Quattro installer contract" sh -c \
+    "test -s '$prepared_omarchy/install/provisioning/setup-form.sh' && cmp -s install/omakid-base.packages '$prepared_omarchy/install/omarchy-base.packages' && cmp -s install/hardware/all.sh '$prepared_omarchy/install/hardware/all.sh'"
+  check "prepared local Tux Paint builder contract" sh -c \
+    "test -s '$prepared_pkgs/pkgbuilds/tuxpaint/PKGBUILD' && grep -q 'tuxpaint' '$prepared_iso/builder/build-omarchy-packages.sh' && grep -q -- '--syncdeps' '$prepared_iso/builder/build-omarchy-packages.sh' && grep -q -- '-e tuxpaint' '$prepared_iso/builder/build-iso.sh'"
+  check "prepared child session autologins without requiring encryption" sh -c \
+    "grep -q 'if not ctx.defer_provisioning:' '$prepared_iso/configs/airootfs/usr/share/omarchy-iso/orchestrator/phases_impl.py' && grep -q \"Omakid.s child session is passwordless\" '$prepared_iso/configs/airootfs/usr/share/omarchy-iso/orchestrator/phases_impl.py' && ! grep -q 'if ctx.encrypt and not ctx.defer_provisioning:' '$prepared_iso/configs/airootfs/usr/share/omarchy-iso/orchestrator/phases_impl.py'"
+  if [[ -d $prepared_omarchy/shell/omakid/content ]]; then
+    check "prepared offline content contract" sh -c \
+      "test -s '$prepared_omarchy/shell/omakid/content/stories/www.storybookscanada.ca/index.html' && test \"\$(find '$prepared_omarchy/shell/omakid/content/gcompris/voices-ogg' -name 'voices-*.rcc' | wc -l)\" -ge 2"
+  fi
+fi
+
+if (( failures )); then
+  printf '%s test(s) failed.\n' "$failures" >&2
+  exit 1
+fi
+printf 'All Omakid overlay tests passed.\n'

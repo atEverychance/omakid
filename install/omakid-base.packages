@@ -1,28 +1,36 @@
-# Omakid base packages.
-# Derived from omarchy-base.packages with ~half removed:
-# no neovim, docker, lazygit, lazydocker, gh, mise, dev TUIs.
-
-# --- the four tiles --------------------------------------------------
-gcompris-qt          # Extra: 100+ activities, ages 2-10
-klettres             # Extra: alphabet -> syllables, kid mode, EN+FR sounds
-tuxpaint             # AUR: pin the commit
-chromium             # kiosk shell for the story mirror
-
-# --- the grid --------------------------------------------------------
-quickshell
-qt6-declarative
-qt6-multimedia
-
-# --- audio: everything speaks ---------------------------------------
-pipewire
-pipewire-pulse
-wireplumber
-espeak-ng            # fallback TTS only
-
-# --- hardware --------------------------------------------------------
+# Omakid target package manifest for 4 GB Bay Trail laptops.
+# One bare package name per line: the ISO builder passes these directly to pacman.
+alsa-utils
+bluez
+bluez-utils
 brightnessctl
+chromium
+desktop-file-utils
+gcompris-qt
+klettres
+libpulse
+libva-intel-driver
 mesa
-xf86-video-intel
-
-# --- advisory parental layer ----------------------------------------
-timekpr-next         # AUR
+networkmanager
+noto-fonts
+noto-fonts-emoji
+pciutils
+pipewire
+pipewire-alsa
+pipewire-pulse
+power-profiles-daemon
+python
+qt6-imageformats
+quickshell
+sddm
+thermald
+tuxpaint
+ufw
+uwsm
+wireless-regdb
+wireplumber
+xdg-desktop-portal-gtk
+xdg-desktop-portal-hyprland
+xdg-user-dirs
+xdg-utils
+zram-generator

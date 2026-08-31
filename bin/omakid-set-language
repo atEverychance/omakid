@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+case "${1:-}" in en|fr) ;; *) echo "usage: omakid-set-language en|fr" >&2; exit 2 ;; esac
+state="${XDG_STATE_HOME:-$HOME/.local/state}/omakid"
+mkdir -p "$state"
+printf '%s\n' "$1" > "$state/lang"
