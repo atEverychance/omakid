@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Record the alphabet in your own voice for KLettres.
+# Usage: omakid-record-letters en-ca | fr-ca
+set -euo pipefail
+LOC=${1:?usage: omakid-record-letters <en-ca|fr-ca>}
+OUT="assets/klettres/$LOC/alpha"
+mkdir -p "$OUT"
+
+echo "Recording $LOC alphabet. 2s per letter. Ctrl-C to stop."
+for L in {A..Z}; do
+  read -rp "Say '$L' — Enter to record, s to skip: " k
+  [[ ${k:-} == s ]] && continue
+  ffmpeg -hide_banner -loglevel error -f pulse -i default -t 2 \
+    -af "silenceremove=start_periods=1:start_threshold=-40dB,apad=whole_dur=2" \
+    -c:a libvorbis -y "$OUT/$(echo "$L" | tr 'A-Z' 'a-z').ogg"
+  echo "  ✓ $L"
+done
+echo "done -> $OUT"

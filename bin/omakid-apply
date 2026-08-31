@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Idempotent. Run after pacman, or never.
+set -euo pipefail
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+KID=${OMAKID_USER:-kid}
+KID_HOME=$(getent passwd "$KID" | cut -d: -f6)
+
+[[ -n "$KID_HOME" ]] || { echo "no such user: $KID" >&2; exit 1; }
+
+# --- her config: symlink, so repo edits are live ---------------------
+while IFS= read -r -d '' src; do
+  dest="$KID_HOME/${src#"$REPO"/home/}"
+  mkdir -p "$(dirname "$dest")"
+  ln -sfn "$src" "$dest"
+done < <(find "$REPO/home" -type f -print0)
+chown -R "$KID:$KID" "$KID_HOME/.config" "$KID_HOME/.local" 2>/dev/null || true
+
+# --- assets to a stable system path ---------------------------------
+install -d /usr/share/omakid
+cp -r "$REPO/assets" /usr/share/omakid/
+
+# --- system files: root-owned ---------------------------------------
+if [[ -d "$REPO/system" ]]; then
+  while IFS= read -r -d '' src; do
+    install -Dm644 -o root -g root "$src" "/${src#"$REPO"/system/}"
+  done < <(find "$REPO/system" -type f -print0)
+fi
+
+# --- scripts on PATH ------------------------------------------------
+install -Dm755 "$REPO"/bin/omakid-* -t /usr/local/bin/
+
+# --- re-enforce the advisory layer ----------------------------------
+# NOTE: kid keeps sudo, by design. These are speed bumps, not walls.
+chattr +i /etc/resolv.conf 2>/dev/null || true
+systemctl enable --now timekpr systemd-resolved 2>/dev/null || true
+
+hyprctl -i 0 reload 2>/dev/null || true
+echo "applied."

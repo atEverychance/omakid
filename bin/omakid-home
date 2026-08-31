@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# The only escape hatch a six-year-old needs.
+set -euo pipefail
+for app in tuxpaint klettres gcompris-qt chromium; do
+  pkill -x "$app" 2>/dev/null || true
+done
+pgrep -f 'quickshell.*omakid' >/dev/null || \
+  (quickshell -c omakid &>/dev/null &)

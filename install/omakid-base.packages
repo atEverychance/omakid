@@ -1,0 +1,28 @@
+# Omakid base packages.
+# Derived from omarchy-base.packages with ~half removed:
+# no neovim, docker, lazygit, lazydocker, gh, mise, dev TUIs.
+
+# --- the four tiles --------------------------------------------------
+gcompris-qt          # Extra: 100+ activities, ages 2-10
+klettres             # Extra: alphabet -> syllables, kid mode, EN+FR sounds
+tuxpaint             # AUR: pin the commit
+chromium             # kiosk shell for the story mirror
+
+# --- the grid --------------------------------------------------------
+quickshell
+qt6-declarative
+qt6-multimedia
+
+# --- audio: everything speaks ---------------------------------------
+pipewire
+pipewire-pulse
+wireplumber
+espeak-ng            # fallback TTS only
+
+# --- hardware --------------------------------------------------------
+brightnessctl
+mesa
+xf86-video-intel
+
+# --- advisory parental layer ----------------------------------------
+timekpr-next         # AUR

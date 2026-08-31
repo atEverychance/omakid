@@ -1,0 +1,12 @@
+{
+  "tiles": [
+    { "id": "paint",   "icon": "paint.png",   "exec": "tuxpaint",
+      "label": { "en": "Painting", "fr": "Peinture" } },
+    { "id": "letters", "icon": "letters.png", "exec": "klettres",
+      "label": { "en": "Letters",  "fr": "Lettres"  } },
+    { "id": "games",   "icon": "games.png",   "exec": "gcompris-qt",
+      "label": { "en": "Games",    "fr": "Jeux"     } },
+    { "id": "stories", "icon": "stories.png", "exec": "omakid-stories",
+      "label": { "en": "Stories",  "fr": "Histoires"} }
+  ]
+}

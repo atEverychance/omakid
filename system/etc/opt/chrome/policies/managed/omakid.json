@@ -1,0 +1,14 @@
+{
+  "ForceGoogleSafeSearch": true,
+  "ForceYouTubeRestrict": 2,
+  "IncognitoModeAvailability": 1,
+  "BrowserSignin": 0,
+  "SyncDisabled": true,
+  "PasswordManagerEnabled": false,
+  "DeveloperToolsAvailability": 2,
+  "ExtensionInstallBlocklist": ["*"],
+  "URLAllowlist": ["http://127.0.0.1:8080"],
+  "HomepageLocation": "http://127.0.0.1:8080",
+  "TranslateEnabled": false,
+  "DefaultNotificationsSetting": 2
+}

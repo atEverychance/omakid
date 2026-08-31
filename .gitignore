@@ -1,0 +1,15 @@
+# personal: names, DNS profile IDs, network details, credentials
+local/
+*.local
+user_credentials.json
+
+# build artefacts
+release/
+*.iso
+
+# recorded audio is large; commit deliberately with -f if wanted
+assets/voice/**/*.wav
+assets/klettres/**/*.ogg
+
+.DS_Store
+__pycache__/

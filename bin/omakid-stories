@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Local Storybooks Canada mirror, kiosk mode.
+set -euo pipefail
+ROOT=/var/lib/omakid/stories/www.storybookscanada.ca
+curl -sf -o /dev/null http://127.0.0.1:8080/ || \
+  (python3 -m http.server 8080 -d "$ROOT" &>/dev/null &)
+sleep 1
+exec chromium --kiosk --no-first-run --disable-features=TranslateUI \
+  http://127.0.0.1:8080/

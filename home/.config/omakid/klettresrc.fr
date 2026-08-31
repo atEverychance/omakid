@@ -1,0 +1,6 @@
+[General]
+LanguageSelected=fr
+KidMode=true
+Level=1
+Timer=4
+Theme=desert

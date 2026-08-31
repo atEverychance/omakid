@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# A drift log, not a gate. Read it with interest, not alarm.
+ok() { printf '  \033[32m✓\033[0m %s\n' "$1"; }
+no() { printf '  \033[33m•\033[0m %s\n' "$1"; }
+
+echo "omakid drift check — $(hostname), $(date '+%Y-%m-%d %H:%M')"
+
+lsattr /etc/resolv.conf 2>/dev/null | grep -q -- '-i-' \
+  && ok "DNS locked" || no "DNS unlocked   <- an update, or a daughter"
+[[ -O /etc/opt/chrome/policies/managed/omakid.json ]] \
+  && ok "chrome policy" || no "chrome policy gone"
+systemctl is-active --quiet timekpr && ok "timekpr" || no "timekpr down"
+pgrep -f 'quickshell.*omakid' >/dev/null && ok "grid up" || no "GRID DOWN"
+wpctl status 2>/dev/null | grep -q 'Sinks:' && ok "audio" || no "NO AUDIO"
