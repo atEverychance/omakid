@@ -89,6 +89,8 @@ check "Quattro finalizer commands remain available" sh -c \
   "grep -qx desktop-file-utils install/omakid-base.packages && grep -qx pciutils install/omakid-base.packages && grep -qx wireless-regdb install/omakid-base.packages && grep -qx xdg-user-dirs install/omakid-base.packages && grep -qx xdg-utils install/omakid-base.packages"
 check "trimmed firewall does not invoke omitted Docker tooling" sh -c \
   "! grep -q 'config/firewall.sh' install/config/all.sh && grep -q 'ufw default deny incoming' install/config/omakid.sh && grep -q 'systemctl enable ufw.service' install/config/omakid.sh"
+check "post-install keeps required maintenance without locate database" sh -c \
+  "grep -q 'post-install/pacman.sh' install/post-install/all.sh && grep -q 'post-install/udev.sh' install/post-install/all.sh && grep -q 'post-install/seed-content.sh' install/post-install/all.sh && grep -q 'post-install/parental.sh' install/post-install/all.sh && ! grep -q 'localdb.sh' install/post-install/all.sh"
 
 check "required flags are real SVG files" sh -c \
   "test -s assets/flags/en.svg && test -s assets/flags/fr.svg && grep -q '<svg' assets/flags/en.svg && grep -q '<svg' assets/flags/fr.svg"
@@ -596,6 +598,8 @@ if [[ -n ${OMAKID_PREPARED_OMARCHY:-} || -n ${OMAKID_PREPARED_ISO:-} || -n ${OMA
     "test -s '$prepared_omarchy/shell/omakid/shell.qml' && test -s '$prepared_omarchy/shell/omakid/assets/voice/fr/stories.wav' && test -s '$prepared_omarchy/config/hypr/hyprland.lua'"
   check "prepared Quattro installer contract" sh -c \
     "test -s '$prepared_omarchy/install/provisioning/setup-form.sh' && cmp -s install/omakid-base.packages '$prepared_omarchy/install/omarchy-base.packages' && cmp -s install/hardware/all.sh '$prepared_omarchy/install/hardware/all.sh'"
+  check "prepared post-install excludes unavailable updatedb stage" sh -c \
+    "cmp -s install/post-install/all.sh '$prepared_omarchy/install/post-install/all.sh' && cmp -s install/post-install/seed-content.sh '$prepared_omarchy/install/post-install/seed-content.sh' && cmp -s install/post-install/parental.sh '$prepared_omarchy/install/post-install/parental.sh' && ! grep -q 'localdb.sh' '$prepared_omarchy/install/post-install/all.sh'"
   check "prepared local dependency chain and offline artifacts contract" python3 - "$prepared_pkgs" "$prepared_iso" <<'PY'
 import re
 import sys

@@ -89,7 +89,12 @@ cp "$root/install/config/omakid.sh" "$omarchy/install/config/omakid.sh"
 cp "$root/install/user/all.sh" "$omarchy/install/user/all.sh"
 cp "$root/install/user/omakid.sh" "$omarchy/install/user/omakid.sh"
 cp "$root/install/hardware/all.sh" "$omarchy/install/hardware/all.sh"
-chmod 0755 "$omarchy/install/config/omakid.sh" "$omarchy/install/user/omakid.sh"
+cp -a "$root/install/post-install/." "$omarchy/install/post-install/"
+chmod 0755 \
+  "$omarchy/install/config/omakid.sh" \
+  "$omarchy/install/user/omakid.sh" \
+  "$omarchy/install/post-install/parental.sh" \
+  "$omarchy/install/post-install/seed-content.sh"
 
 # Package-owned system policy and timers. omarchy-settings copies source etc/.
 cp -a "$root/system/etc/." "$omarchy/etc/"
