@@ -1,0 +1,19 @@
+{
+  "_comment": "TODO: replace the six animals with ones the girls choose themselves. Choosing from a list an adult invented is a worse version of this feature.",
+  "colours": [
+    { "id": "green",  "swatch": "#3fa14a", "label": { "en": "Green",  "fr": "Vert"   } },
+    { "id": "blue",   "swatch": "#3b82c4", "label": { "en": "Blue",   "fr": "Bleu"   } },
+    { "id": "purple", "swatch": "#8b5cc7", "label": { "en": "Purple", "fr": "Violet" } },
+    { "id": "pink",   "swatch": "#d9538f", "label": { "en": "Pink",   "fr": "Rose"   } },
+    { "id": "orange", "swatch": "#e07a3f", "label": { "en": "Orange", "fr": "Orange" } },
+    { "id": "yellow", "swatch": "#e0b93f", "label": { "en": "Yellow", "fr": "Jaune"  } }
+  ],
+  "avatars": [
+    { "id": "fox",   "label": { "en": "Fox",   "fr": "Renard"  } },
+    { "id": "owl",   "label": { "en": "Owl",   "fr": "Hibou"   } },
+    { "id": "whale", "label": { "en": "Whale", "fr": "Baleine" } },
+    { "id": "bee",   "label": { "en": "Bee",   "fr": "Abeille" } },
+    { "id": "cat",   "label": { "en": "Cat",   "fr": "Chat"    } },
+    { "id": "horse", "label": { "en": "Horse", "fr": "Cheval"  } }
+  ]
+}

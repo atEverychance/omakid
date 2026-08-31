@@ -15,7 +15,8 @@ A kid-first Linux distribution for pre-readers, forked from [Omarchy](https://om
 3. **One way home.** A single physical key returns to the grid, from anywhere, always.
 4. **Five tiles maximum.** More choice is not more capability at six years old.
 5. **Updates are manual.** No timers, no daemons, nothing to debug at bedtime.
-6. **The locks are speed bumps, not walls.** See §10.
+6. **The locks are speed bumps, not walls.** See §11.
+7. **Choice creates ownership.** She picks her colour and her animal, and can change them forever. See §7.
 
 ---
 
@@ -59,20 +60,26 @@ omakid/
 ├── bin/
 │   ├── omakid-apply                   # §11
 │   ├── omakid-check                   # §11
-│   ├── omakid-launch                  # locale wrapper, §7
+│   ├── omakid-launch                  # locale wrapper, §8
+│   ├── omakid-me                      # the Me picker, §7
+│   ├── omakid-set-identity            # colour/avatar/name, §7
 │   ├── omakid-home                    # return to grid
 │   ├── omakid-stories                 # kiosk story shelf, §8
 │   └── omakid-record-letters          # your voice, §9
 ├── home/                              # symlinked into her ~
 │   ├── .config/hypr/omakid.conf
 │   ├── .config/omakid/tiles.json
+│   ├── .config/omakid/identity.json   # six colours, six animals
 │   ├── .config/omakid/klettresrc.{en,fr}
-│   └── .config/quickshell/omakid/{shell,Tile}.qml
+│   ├── .config/quickshell/omakid/{shell,Tile}.qml
+│   └── .config/quickshell/omakid-me/shell.qml
 ├── system/                            # copied, root-owned
 │   ├── etc/opt/chrome/policies/managed/omakid.json
 │   └── etc/systemd/resolved.conf.d/omakid-dns.conf
+├── themes/omakid-{green,blue,purple,pink,orange,yellow}/colors.toml
 ├── assets/
 │   ├── icons/{paint,letters,games,stories}.png
+│   ├── avatars/{fox,owl,whale,bee,cat,horse}.png
 │   ├── flags/{en,fr}.png
 │   ├── voice/{en,fr}/*.wav
 │   ├── klettres/{en-ca,fr-ca}/{alpha,syllab}/*.ogg
@@ -374,7 +381,77 @@ Three settings matter more than the rest:
 
 ---
 
-## 7. The language wrapper
+## 7. Identity — the Me tile
+
+Omarchy already interviews you three times, and all three are adult-shaped:
+
+| Surface | Asks | Where |
+|---|---|---|
+| ISO Configurator | keyboard, language, timezone, hostname, user, disk | TTY, pre-desktop |
+| `install.sh` prompt | name + email for `git config` | TTY, mid-install |
+| Style menu | theme, screensaver logo, About text | `Super + Alt + Space`, adult TUI |
+
+None of them can be reached by a six-year-old. So Omakid adds a fourth, shaped for her.
+
+### Two corrections to the obvious design
+
+**Don't collect data — offer a choice.** A wizard with fields is an adult mental model. A pre-reader can't parse "what is your favourite colour?" as a prompt, but she completely understands *six coloured squares, tap one, the whole screen changes.* Instant cause and effect is the delight. Data entry is not.
+
+**A first-run interview is the wrong shape.** A six-year-old's favourite colour has a half-life of about three weeks. If picking happens once, at install, in a flow that never returns, then the second time she wants purple she needs you — which defeats the premise of the distro.
+
+So invert it. Build a **permanent affordance** and auto-open it once on first boot. Same code, no wizard state machine, no `first_run` flag to get stuck on, infinitely re-runnable. The "first-run interview" is just *the Me picker, which happens to open itself the first time.* Less code, strictly more capable.
+
+### Where it lives
+
+**Not a fifth grid tile** — the grid stays at four, and the mockup stays the acceptance criterion. Instead: **her chosen animal, top-left corner, 88 px.** She taps her own fox to change her fox. The affordance *is* the current state, which is about as legible as an interface gets without text.
+
+### Two screens, six choices, no reading
+
+```
+screen 1 — colour    six big swatches; tap and the background becomes it
+screen 2 — avatar    six animals; tap and it lands in the corner
+```
+
+Both driven by `home/.config/omakid/identity.json`, so adding a colour is a one-line edit. Selection calls `omakid-set-identity`, which writes state and delegates:
+
+```bash
+omakid-set-identity colour purple   # -> omarchy-theme-set omakid-purple
+omakid-set-identity avatar owl      # -> state + plymouth
+omakid-set-identity name "Nora"     # -> figlet -> screensaver.txt
+```
+
+**Don't write a theming engine.** Omarchy's already there: `omarchy-theme-set <name>` stages from `themes/<name>/`, overlays `~/.config/omarchy/themes/<name>/`, renders templates from `colors.toml`, writes `current/theme.name`, and notifies the running shell. Ship six palettes, shell out, done. The manual recommends copying an existing theme as a base rather than authoring `colors.toml` from scratch — do that on first build.
+
+### Three rules
+
+- **Instant feedback.** Tap green and the background is green *before* the finger lifts. No confirm, no Apply, no OK.
+- **Never blocking.** Tap through randomly, close it, ignore it — defaults apply and the grid loads. Nothing gates the desktop.
+- **It speaks.** Your voice, `assets/voice/{en,fr}/colour-*.wav` and `avatar-*.wav`.
+
+### On names
+
+Worth knowing: **writing your own name reliably precedes reading fluency.** Kids master their own name as a shape long before they decode text. So a name field is the one text input a pre-reader can actually complete — and completing it is a point of pride.
+
+Pre-seed both names via `cidata` so nothing depends on it, then leave the field editable. Never require it.
+
+Then spend it somewhere decorative rather than functional. She can't read a greeting on the grid, but she can absolutely recognise her name eight feet tall in animated ASCII:
+
+```bash
+figlet -f big "$NAME" > ~/.config/omarchy/branding/screensaver.txt
+```
+
+That's Omarchy's existing screensaver pipeline, unmodified — `branding.sh` copies `logo.txt` to `~/.config/omarchy/branding/screensaver.txt`, and TTE animates whatever's in it. The idle screensaver becomes a show-grandparents feature for free. Her animal can go the same route; Omarchy converts an uploaded PNG or SVG to ASCII for both the screensaver and the About screen.
+
+### The part worth doing properly
+
+Propagate the choice to **plymouth and SDDM** — `omarchy plymouth preview` / `set` / `reset` handle a custom boot logo and colours.
+
+Which means: from the instant she presses power, before any desktop exists, the machine is visibly *hers.* Her colour on the boot splash, her fox on the login screen, her name in the screensaver. Two identical salvaged laptops become two obviously different machines. At six and seven, with a sister, that distinction is not a small thing.
+
+**Open question for the girls:** let them name their own six animals. Choosing from a list you invented is a worse version of this feature than choosing from a list they wrote. `identity.json` carries a TODO to that effect.
+
+
+## 8. The language wrapper
 
 Two flag tiles, top-right, always visible. Tapping one writes `~/.local/state/omakid/lang`; the grid re-renders with the other language's audio labels.
 
@@ -403,7 +480,7 @@ Better than two user accounts: no logout, no password, no lost work. Language be
 
 ---
 
-## 8. Content seeding
+## 9. Content seeding
 
 `install/post-install/seed-content.sh`. Runs at install so the laptops work in the car with no signal.
 
@@ -457,7 +534,7 @@ There's an **Indigenous Storybooks** sibling built on the open-source Little Cre
 
 ---
 
-## 9. Your voice
+## 10. Your voice
 
 The best feature in this build, and it costs one afternoon.
 
@@ -500,7 +577,7 @@ Twenty-six files, one decent mic. Your voice teaching your daughters their lette
 
 ---
 
-## 10. Parental layer — speed bumps, not walls
+## 11. Parental layer — speed bumps, not walls
 
 **Design decision: the kid account keeps sudo.**
 
@@ -523,7 +600,7 @@ Real risk that remains, and it's the mundane one: a `pacman -Syu` can reset the 
 
 ---
 
-## 11. Apply and check
+## 12. Apply and check
 
 `bin/omakid-apply` — idempotent, run after pacman or never:
 
@@ -559,6 +636,14 @@ chattr +i /etc/resolv.conf 2>/dev/null || true
 systemctl enable --now timekpr systemd-resolved
 
 hyprctl -i 0 reload 2>/dev/null || true
+
+# --- first boot only: let her choose a colour and an animal ----------
+# The Me picker is a permanent affordance (her avatar, top-left corner).
+# This single line is the only thing that makes it "first-run".
+if [[ ! -f "$KID_HOME/.local/state/omakid/colour" ]]; then
+  su - "$KID" -c 'omakid-me' &>/dev/null &
+fi
+
 echo "applied."
 ```
 
@@ -590,7 +675,7 @@ Chain it into a fish abbr — `kidup` — and you're done.
 
 ---
 
-## 12. Build and install
+## 13. Build and install
 
 ```bash
 # 1. build
@@ -612,12 +697,13 @@ Before starting: **disable Secure Boot and TPM in BIOS** on both machines. Keep 
 
 ---
 
-## 13. Phases
+## 14. Phases
 
 | # | Milestone | Done when |
 |---|---|---|
 | 1 | Trimmed package list + locale gen, builds clean | ISO boots in VM to a Hyprland session |
 | 2 | Quickshell grid + 4 tiles + English WAVs | Grid matches the mockup, tiles speak, apps launch fullscreen |
+| 2.5 | Me picker + six themes + avatar corner | She picks her own colour and animal, unaided |
 | 3 | `omakid.conf` trackpad/keybind layer | She can drive it with a trackpad and never gets stuck |
 | 4 | `parental.sh` + `omakid-apply` + `omakid-check` | `kidup` runs clean |
 | 5 | Content seeding: GCompris voices, story mirror | Wifi off, everything still works |
@@ -626,11 +712,11 @@ Before starting: **disable Secure Boot and TPM in BIOS** on both machines. Keep 
 | 8 | Deploy laptop A, watch a week, then laptop B | Neither asks for help to open Painting |
 | 9 | Earned extras: terminal tile, Indigenous Storybooks | When one of them defeats the DNS lock |
 
-Phase 2 is the project. Phases 1 and 3 are an evening each. Phase 7 is the one they'll remember. Phase 9 is the one you're secretly hoping for.
+Phase 2 is the project; 2.5 is about two hours, since it's the tile grid with a different model. Phases 1 and 3 are an evening each. Phase 7 is the one they'll remember. Phase 9 is the one you're secretly hoping for.
 
 ---
 
-## 14. Known risks
+## 15. Known risks
 
 - **Quickshell API drift** — pin the package version in the fork. The single most likely thing to break on an update.
 - **Old Intel iGPU + Hyprland** — if either laptop stutters, `animations { enabled = false }`. Test before deciding; DHH's own demo ran a 2011 ThinkPad X220 with 2 GB at ~890 MB idle.
@@ -651,4 +737,8 @@ Phase 2 is the project. Phases 1 and 3 are an evening each. Phase 7 is the one t
 - [klettres in Arch Extra](https://archlinux.org/packages/extra/x86_64/klettres/)
 - [GCompris FAQ — offline voice/word .rcc seeding](https://www.gcompris.net/faq-en.html)
 - [KLettres Handbook — custom sound sets, sounds.xml](https://docs.kde.org/trunk_kf6/en/klettres/klettres/klettres.pdf)
+- [Omarchy theming — theme-set staging flow, colors.toml](https://github.com/basecamp/omarchy/blob/quattro/docs/theming.md)
+- [Omarchy branding — plymouth, screensaver, About](https://learn.omacom.io/2/the-omarchy-manual/118/branding)
+- [Omarchy branding assets — branding.sh, logo.txt/icon.txt](https://docs.docuwriter.ai/omarchy-user-docs/78804)
+- [Making your own theme](https://learn.omacom.io/2/the-omarchy-manual/92/making-your-own-theme)
 - [Storybooks Canada](https://www.storybookscanada.ca/) / [usage guide](https://scarfedigitalsandbox.teach.educ.ubc.ca/storybooks-canada/) / [Global Storybooks](https://decoda.ca/global-storybooks/)

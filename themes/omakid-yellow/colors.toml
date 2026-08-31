@@ -1,0 +1,18 @@
+# Omakid theme: yellow
+# NOTE: the Omarchy manual recommends copying an existing theme from
+# ~/.local/share/omarchy/themes/ as a base, then tweaking colors.toml.
+# This is a minimal palette stub — verify key names against the installed
+# themes on first build, since colors.toml drives generated configs for
+# the terminal, btop, Chromium, Hyprland, Hyprlock, Mako, SwayOSD and the shell.
+
+[colors]
+primary    = "#e0b93f"
+background = "#3a2e07"
+foreground = "#fdf8e4"
+accent     = "#e0b93f"
+highlight  = "#f0da8f"
+
+# Kid-facing surfaces read these two.
+[omakid]
+grid_background = "#3a2e07"
+tile_highlight  = "#f0da8f"

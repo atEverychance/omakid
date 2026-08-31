@@ -32,6 +32,15 @@ ShellRoot {
         onFileChanged: reload()
     }
 
+    // --- her chosen animal -------------------------------------------
+    property string avatar: "fox"
+    FileView {
+        path: Quickshell.env("HOME") + "/.local/state/omakid/avatar"
+        watchChanges: true
+        onLoaded: root.avatar = (text().trim() || "fox")
+        onFileChanged: reload()
+    }
+
     // --- audio label: pre-recorded wav, not synthesized --------------
     Process { id: speaker; command: [] }
 
@@ -61,6 +70,33 @@ ShellRoot {
             gradient: Gradient {
                 GradientStop { position: 0.0; color: "#0d4a4a" }
                 GradientStop { position: 1.0; color: "#17635c" }
+            }
+        }
+
+        // --- her avatar, top left: tap your own fox to change your fox
+        Rectangle {
+            anchors { top: parent.top; left: parent.left; margins: 32 }
+            width: 88; height: 88; radius: 44
+            color: "#ffffff"
+            opacity: av.containsMouse ? 1.0 : 0.75
+            scale: av.containsMouse ? 1.08 : 1.0
+            Behavior on scale { NumberAnimation { duration: 140 } }
+
+            Image {
+                anchors.fill: parent
+                anchors.margins: 10
+                source: `${root.assets}/avatars/${root.avatar}.png`
+                fillMode: Image.PreserveAspectFit
+                mipmap: true
+            }
+
+            MouseArea {
+                id: av
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onEntered: root.speak("me")
+                onClicked: Quickshell.execDetached(["omakid-me"])
             }
         }
 

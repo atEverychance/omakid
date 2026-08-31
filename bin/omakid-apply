@@ -26,6 +26,13 @@ if [[ -d "$REPO/system" ]]; then
   done < <(find "$REPO/system" -type f -print0)
 fi
 
+# --- kid themes into her Omarchy theme dir --------------------------
+if [[ -d "$REPO/themes" ]]; then
+  install -d "$KID_HOME/.config/omarchy/themes"
+  cp -r "$REPO"/themes/omakid-* "$KID_HOME/.config/omarchy/themes/"
+  chown -R "$KID:$KID" "$KID_HOME/.config/omarchy"
+fi
+
 # --- scripts on PATH ------------------------------------------------
 install -Dm755 "$REPO"/bin/omakid-* -t /usr/local/bin/
 
@@ -35,4 +42,12 @@ chattr +i /etc/resolv.conf 2>/dev/null || true
 systemctl enable --now timekpr systemd-resolved 2>/dev/null || true
 
 hyprctl -i 0 reload 2>/dev/null || true
+
+# --- first boot only: let her choose a colour and an animal ----------
+# The Me picker is a permanent affordance (her avatar, top-left corner).
+# This single line is the only thing that makes it "first-run".
+if [[ ! -f "$KID_HOME/.local/state/omakid/colour" ]]; then
+  su - "$KID" -c 'omakid-me' &>/dev/null &
+fi
+
 echo "applied."

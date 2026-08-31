@@ -24,6 +24,7 @@ large pictures that **speak their own names** when you point at them.
 4. Five tiles maximum.
 5. Updates are manual.
 6. The locks are speed bumps, not walls.
+7. Choice creates ownership — she picks her colour and her animal, and can change them forever.
 
 ## The stack
 
@@ -33,6 +34,18 @@ large pictures that **speak their own names** when you point at them.
 | Letters | KLettres — alphabet→syllables, kid mode, EN + FR sounds | Arch Extra |
 | Games | GCompris — 100+ activities, ages 2–10 | Arch Extra |
 | Stories | [Storybooks Canada](https://www.storybookscanada.ca/) mirror — CC BY 4.0, line-level read-aloud audio in EN + FR | local kiosk |
+
+## Make it yours
+
+Her animal sits in the top-left corner. Tapping it opens a two-screen picker —
+six colours, six animals, no reading, instant feedback. The colour drives an
+Omarchy theme; the animal reaches the login screen and boot splash; her name,
+if she wants to type it, ends up eight feet tall in the animated ASCII
+screensaver.
+
+It auto-opens once on first boot and lives there permanently after. A
+six-year-old's favourite colour has a half-life of about three weeks, so a
+one-time setup wizard would have been the wrong shape.
 
 ## Read the plan
 

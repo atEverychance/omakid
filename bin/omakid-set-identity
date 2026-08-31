@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Apply an identity choice. Called by the Me picker on every tap.
+# Usage: omakid-set-identity colour <id> | avatar <id> | name <string>
+set -euo pipefail
+STATE="${XDG_STATE_HOME:-$HOME/.local/state}/omakid"
+ASSETS="${OMAKID_ASSETS:-/usr/share/omakid/assets}"
+mkdir -p "$STATE"
+
+case "${1:?colour|avatar|name}" in
+  colour)
+    ID="${2:?}"
+    echo "$ID" > "$STATE/colour"
+    # delegate to Omarchy's theme engine; don't reinvent it
+    omarchy-theme-set "omakid-$ID" 2>/dev/null || \
+      echo "WARN: theme omakid-$ID not installed" >&2
+    ;;
+  avatar)
+    ID="${2:?}"
+    echo "$ID" > "$STATE/avatar"
+    # her animal becomes the About screen art, via Omarchy's own pipeline
+    if [[ -f "$ASSETS/avatars/$ID.png" ]]; then
+      omarchy plymouth set 2>/dev/null || true
+    fi
+    ;;
+  name)
+    NAME="${2:?}"
+    echo "$NAME" > "$STATE/name"
+    # eight feet tall in animated ASCII — she can't read a greeting,
+    # but she can absolutely recognise her own name
+    mkdir -p "$HOME/.config/omarchy/branding"
+    if command -v figlet >/dev/null; then
+      figlet -f big "$NAME" > "$HOME/.config/omarchy/branding/screensaver.txt"
+    else
+      printf '%s\n' "$NAME" > "$HOME/.config/omarchy/branding/screensaver.txt"
+    fi
+    ;;
+  *) echo "usage: omakid-set-identity colour|avatar|name <value>" >&2; exit 1 ;;
+esac
