@@ -382,6 +382,7 @@ required = [
     'apt-get install --yes wget xorriso',
     'apt-get install --yes --no-install-recommends',
     'qemu-system-x86',
+    'qemu-system-gui',
     'INSTALL_MEMORY_MB: "4096"',
     'INSTALL_TIMEOUT_SECONDS: "3600"',
     'ovmf',
@@ -406,6 +407,8 @@ required = [
     'omarchy-iso-test-result.json',
     'omarchy-iso-test.log',
     'omarchy-iso-install-proof.png',
+    'Upload VM acceptance failure evidence',
+    'cat "$log_file" >&2',
 ]
 missing = [snippet for snippet in required if snippet not in text]
 if missing:

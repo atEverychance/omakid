@@ -82,6 +82,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends \
             qemu-system-x86 \
+            qemu-system-gui \
             qemu-utils \
             ovmf \
             socat \
@@ -217,8 +218,21 @@ jobs:
 
           if [[ "$test_status" != "PASS" ]]; then
             echo "Upstream install acceptance harness failed. See ${log_file}" >&2
+            cat "$log_file" >&2
             exit "$harness_rc"
           fi
+
+      - name: Upload VM acceptance failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: omakid-vm-failure-${{ github.run_number }}
+          path: |
+            upstream/omarchy-iso/release/omarchy-iso-test-result.json
+            upstream/omarchy-iso/release/omarchy-iso-test.log
+            upstream/omarchy-iso/release/omarchy-iso-install-proof.png
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Validate ISO boot structure and generate SHA256
         working-directory: upstream/omarchy-iso/release
