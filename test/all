@@ -304,8 +304,15 @@ def effective_function(name):
 
 def validate_early_contract(early_packages, install_early_packages):
     returns = [node for node in early_packages.body if isinstance(node, ast.Return)]
-    if len(returns) != 1 or ast.dump(returns[0].value) != ast.dump(
-        ast.Call(func=ast.Name(id='_early_bootstrap_packages'), args=[], keywords=[])
+    if len(returns) != 1:
+        raise SystemExit('_early_packages must contain exactly one return')
+    returned = returns[0].value
+    if (
+        not isinstance(returned, ast.Call)
+        or not isinstance(returned.func, ast.Name)
+        or returned.func.id != '_early_bootstrap_packages'
+        or returned.args
+        or returned.keywords
     ):
         raise SystemExit('_early_packages must return only _early_bootstrap_packages()')
 
@@ -316,8 +323,15 @@ def validate_early_contract(early_packages, install_early_packages):
         and isinstance(node.targets[0], ast.Name)
         and node.targets[0].id == 'bootstrap_packages'
     ]
-    if len(bootstrap_assignments) != 1 or ast.dump(bootstrap_assignments[0].value) != ast.dump(
-        ast.Call(func=ast.Name(id='_early_bootstrap_packages'), args=[], keywords=[])
+    if len(bootstrap_assignments) != 1:
+        raise SystemExit('_install_early_packages must derive bootstrap_packages once')
+    bootstrap_value = bootstrap_assignments[0].value
+    if (
+        not isinstance(bootstrap_value, ast.Call)
+        or not isinstance(bootstrap_value.func, ast.Name)
+        or bootstrap_value.func.id != '_early_bootstrap_packages'
+        or bootstrap_value.args
+        or bootstrap_value.keywords
     ):
         raise SystemExit('_install_early_packages must derive bootstrap_packages once')
 
@@ -661,8 +675,15 @@ if '_omarchy_settings_package' not in bootstrap_names:
 
 early_packages = functions['_early_packages']
 returns = [node for node in early_packages.body if isinstance(node, ast.Return)]
-if len(returns) != 1 or ast.dump(returns[0].value) != ast.dump(
-    ast.Call(func=ast.Name(id='_early_bootstrap_packages'), args=[], keywords=[])
+if len(returns) != 1:
+    raise SystemExit(f'{path}: _early_packages must contain exactly one return')
+returned = returns[0].value
+if (
+    not isinstance(returned, ast.Call)
+    or not isinstance(returned.func, ast.Name)
+    or returned.func.id != '_early_bootstrap_packages'
+    or returned.args
+    or returned.keywords
 ):
     raise SystemExit(f'{path}: _early_packages is not bootstrap-only')
 
@@ -674,8 +695,15 @@ bootstrap_assignments = [
     and isinstance(node.targets[0], ast.Name)
     and node.targets[0].id == 'bootstrap_packages'
 ]
-if len(bootstrap_assignments) != 1 or ast.dump(bootstrap_assignments[0].value) != ast.dump(
-    ast.Call(func=ast.Name(id='_early_bootstrap_packages'), args=[], keywords=[])
+if len(bootstrap_assignments) != 1:
+    raise SystemExit(f'{path}: early installer does not derive bootstrap_packages exactly once')
+bootstrap_value = bootstrap_assignments[0].value
+if (
+    not isinstance(bootstrap_value, ast.Call)
+    or not isinstance(bootstrap_value.func, ast.Name)
+    or bootstrap_value.func.id != '_early_bootstrap_packages'
+    or bootstrap_value.args
+    or bootstrap_value.keywords
 ):
     raise SystemExit(f'{path}: early installer does not derive bootstrap_packages exactly once')
 
