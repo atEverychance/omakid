@@ -69,6 +69,10 @@ cat > "$tmp/ATTRIBUTION.md" <<'ATTRIBUTION'
 - The complete English/French Storybooks Canada shelf, narration, images, and site runtime are mirrored from https://www.storybookscanada.ca/. The unrelated all-language PDF/edition export corpus is intentionally excluded from the child kiosk. Stories are published under Creative Commons Attribution 4.0 unless an individual story states otherwise. Story and illustrator credits remain in each mirrored page. Project source and usage details: https://www.storybookscanada.ca/about/ and https://creativecommons.org/licenses/by/4.0/
 ATTRIBUTION
 
+# makepkg builds as an unprivileged user, so publish a traversable/readable tree.
+find "$tmp" -type d -exec chmod 0755 {} +
+find "$tmp" -type f -exec chmod 0644 {} +
+
 rm -rf "$out"
 mv "$tmp" "$out"
 trap - EXIT

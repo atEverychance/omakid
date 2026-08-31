@@ -122,6 +122,20 @@ check "runtime paths are package-owned and user-neutral" sh -c \
   "! grep -RqsE '/usr/share/omakid|OMAKID_USER:-kid|/home/kid' bin home install system build packages && grep -q '/usr/share/omarchy/shell/omakid' bin/omakid-shell"
 check "RCC matching accepts full date-time suffixes" sh -c \
   "grep -Fq \"voices-en-[0-9]{4}(-[0-9]{2}){5}\\.rcc\" build/fetch-content.sh && grep -Fq \"backgroundMusic-ogg-[0-9]{4}(-[0-9]{2}){5}\\.rcc\" build/fetch-content.sh"
+check "fetched content is readable by the unprivileged package builder before publication" python3 - <<'PY'
+from pathlib import Path
+
+path = Path('build/fetch-content.sh')
+text = path.read_text()
+directory_mode = 'find "$tmp" -type d -exec chmod 0755 {} +'
+file_mode = 'find "$tmp" -type f -exec chmod 0644 {} +'
+publish = 'mv "$tmp" "$out"'
+for command in (directory_mode, file_mode, publish):
+    if text.count(command) != 1:
+        raise SystemExit(f'{path}: expected exactly one {command!r}')
+if not text.index(directory_mode) < text.index(file_mode) < text.index(publish):
+    raise SystemExit(f'{path}: payload permissions must be normalized before publication')
+PY
 check "Arch Chromium policy path is correct" sh -c \
   "test -f system/etc/chromium/policies/managed/omakid.json && test ! -e system/etc/opt/chrome/policies/managed/omakid.json"
 check "native curfew has no daily quota" sh -c \
