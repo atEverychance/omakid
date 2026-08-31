@@ -44,6 +44,24 @@ PY
 
 check "trimmed target excludes retired runtime packages" sh -c \
   "! grep -Eq '^(timekpr-next|xf86-video-intel|docker|neovim|lazygit|mise-bin)$' install/omakid-base.packages"
+check "explicit PipeWire target covers archinstall audio selections" python3 - <<'PY'
+from pathlib import Path
+
+packages = {
+    line.strip()
+    for line in Path('install/omakid-base.packages').read_text().splitlines()
+    if line.strip() and not line.startswith('#')
+}
+required = {
+    'pipewire', 'pipewire-alsa', 'pipewire-jack', 'pipewire-pulse',
+    'gst-plugin-pipewire', 'wireplumber',
+}
+missing = required - packages
+if missing:
+    raise SystemExit(f'PipeWire install closure is incomplete: {sorted(missing)}')
+if 'jack2' in packages:
+    raise SystemExit('jack2 conflicts with the selected pipewire-jack provider')
+PY
 check "Bay Trail keeps Mesa and i965 without modern Intel graphics ballast" python3 - <<'PY'
 from pathlib import Path
 
@@ -58,7 +76,7 @@ if missing:
     raise SystemExit(f'missing Bay Trail packages from base manifest: {sorted(missing)}')
 unsupported = {
     'intel-media-driver', 'libvpl', 'vpl-gpu-rt', 'vulkan-intel',
-    'linux-headers', 'pipewire-jack', 'sof-firmware', 'xf86-video-intel',
+    'linux-headers', 'sof-firmware', 'xf86-video-intel',
 }
 for path, manifest in packages.items():
     found = unsupported & manifest
