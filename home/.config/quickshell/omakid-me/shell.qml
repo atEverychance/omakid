@@ -1,5 +1,5 @@
 // Omakid "Me" picker: two screens, six choices each, no text required.
-// Instant feedback — tap green and the screen IS green before the finger lifts.
+// Instant feedback — tap a colour and the screen IS that colour before the finger lifts.
 // No confirm button. No Apply. No OK. Nothing gates the desktop.
 import Quickshell
 import Quickshell.Io
@@ -12,7 +12,8 @@ ShellRoot {
     property string lang: "en"
     property var colours: []
     property var avatars: []
-    property string pickedColour: ""
+    property string pickedColour: "#A8D8F0"
+    property string pickedText: "#1F1B24"
     property string pickedAvatar: ""
     property int screen: 0          // 0 = colour, 1 = avatar
 
@@ -59,7 +60,7 @@ ShellRoot {
         Rectangle {
             id: bg
             anchors.fill: parent
-            color: root.pickedColour || "#0f4c4c"
+            color: root.pickedColour
             Behavior on color { ColorAnimation { duration: 220 } }
         }
 
@@ -75,9 +76,9 @@ ShellRoot {
                 model: root.colours
                 Rectangle {
                     width: 220; height: 220; radius: 36
-                    color: modelData.swatch
+                    color: modelData.colour
                     border.width: sa.containsMouse ? 8 : 0
-                    border.color: "#ffffff"
+                    border.color: modelData.text
                     scale: sa.containsMouse ? 1.07 : 1.0
                     Behavior on scale { NumberAnimation { duration: 140 } }
 
@@ -88,7 +89,8 @@ ShellRoot {
                         cursorShape: Qt.PointingHandCursor
                         onEntered: root.speak("colour-" + modelData.id)
                         onClicked: {
-                            root.pickedColour = modelData.swatch
+                            root.pickedColour = modelData.colour
+                            root.pickedText = modelData.text
                             root.apply("colour", modelData.id)
                             nextScreen.start()
                         }
@@ -151,11 +153,12 @@ ShellRoot {
             width: 120; height: 120
             cursorShape: Qt.PointingHandCursor
             onClicked: Qt.quit()
-            Image {
-                anchors.fill: parent
-                source: `${root.assets}/icons/home.png`
-                fillMode: Image.PreserveAspectFit
-                opacity: 0.55
+            Text {
+                anchors.centerIn: parent
+                text: "⌂"
+                color: root.pickedText
+                opacity: 0.62
+                font { pixelSize: 82; bold: true }
             }
         }
     }

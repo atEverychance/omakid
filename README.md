@@ -38,7 +38,9 @@ large pictures that **speak their own names** when you point at them.
 ## Make it yours
 
 Her animal sits in the top-left corner. Tapping it opens a two-screen picker —
-six colours, six animals, no reading, instant feedback. The colour drives an
+six shared flat colours — light pink, light blue, bright pink, bright blue,
+purple and gold — then an orca, elephant, bunny, jellyfish, panther or bear.
+No reading, no gradients, instant feedback. The colour drives an
 Omarchy theme; the animal reaches the login screen and boot splash; her name,
 if she wants to type it, ends up eight feet tall in the animated ASCII
 screensaver.

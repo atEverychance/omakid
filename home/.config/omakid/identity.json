@@ -1,19 +1,102 @@
 {
-  "_comment": "TODO: replace the six animals with ones the girls choose themselves. Choosing from a list an adult invented is a worse version of this feature.",
   "colours": [
-    { "id": "green",  "swatch": "#3fa14a", "label": { "en": "Green",  "fr": "Vert"   } },
-    { "id": "blue",   "swatch": "#3b82c4", "label": { "en": "Blue",   "fr": "Bleu"   } },
-    { "id": "purple", "swatch": "#8b5cc7", "label": { "en": "Purple", "fr": "Violet" } },
-    { "id": "pink",   "swatch": "#d9538f", "label": { "en": "Pink",   "fr": "Rose"   } },
-    { "id": "orange", "swatch": "#e07a3f", "label": { "en": "Orange", "fr": "Orange" } },
-    { "id": "yellow", "swatch": "#e0b93f", "label": { "en": "Yellow", "fr": "Jaune"  } }
+    {
+      "id": "pink-light",
+      "colour": "#F9C3D9",
+      "text": "#1F1B24",
+      "label": {
+        "en": "Light Pink",
+        "fr": "Rose pâle"
+      }
+    },
+    {
+      "id": "blue-light",
+      "colour": "#A8D8F0",
+      "text": "#1F1B24",
+      "label": {
+        "en": "Light Blue",
+        "fr": "Bleu pâle"
+      }
+    },
+    {
+      "id": "pink-bright",
+      "colour": "#DE1C84",
+      "text": "#FFFFFF",
+      "label": {
+        "en": "Bright Pink",
+        "fr": "Rose vif"
+      }
+    },
+    {
+      "id": "blue-bright",
+      "colour": "#1668E0",
+      "text": "#FFFFFF",
+      "label": {
+        "en": "Bright Blue",
+        "fr": "Bleu vif"
+      }
+    },
+    {
+      "id": "purple",
+      "colour": "#7B2FBE",
+      "text": "#FFFFFF",
+      "label": {
+        "en": "Purple",
+        "fr": "Violet"
+      }
+    },
+    {
+      "id": "gold",
+      "colour": "#E0A32A",
+      "text": "#1F1B24",
+      "label": {
+        "en": "Gold",
+        "fr": "Or"
+      }
+    }
   ],
   "avatars": [
-    { "id": "fox",   "label": { "en": "Fox",   "fr": "Renard"  } },
-    { "id": "owl",   "label": { "en": "Owl",   "fr": "Hibou"   } },
-    { "id": "whale", "label": { "en": "Whale", "fr": "Baleine" } },
-    { "id": "bee",   "label": { "en": "Bee",   "fr": "Abeille" } },
-    { "id": "cat",   "label": { "en": "Cat",   "fr": "Chat"    } },
-    { "id": "horse", "label": { "en": "Horse", "fr": "Cheval"  } }
+    {
+      "id": "orca",
+      "label": {
+        "en": "Orca",
+        "fr": "Orque"
+      }
+    },
+    {
+      "id": "elephant",
+      "label": {
+        "en": "Elephant",
+        "fr": "Éléphant"
+      }
+    },
+    {
+      "id": "bunny",
+      "label": {
+        "en": "Bunny",
+        "fr": "Lapin"
+      }
+    },
+    {
+      "id": "jellyfish",
+      "label": {
+        "en": "Jellyfish",
+        "fr": "Méduse"
+      }
+    },
+    {
+      "id": "panther",
+      "label": {
+        "en": "Panther",
+        "fr": "Panthère"
+      }
+    },
+    {
+      "id": "bear",
+      "label": {
+        "en": "Bear",
+        "fr": "Ours"
+      }
+    }
   ]
 }

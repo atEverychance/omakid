@@ -17,10 +17,7 @@ case "${1:?colour|avatar|name}" in
   avatar)
     ID="${2:?}"
     echo "$ID" > "$STATE/avatar"
-    # her animal becomes the About screen art, via Omarchy's own pipeline
-    if [[ -f "$ASSETS/avatars/$ID.png" ]]; then
-      omarchy plymouth set 2>/dev/null || true
-    fi
+    # The main shell watches this file and changes the corner avatar live.
     ;;
   name)
     NAME="${2:?}"

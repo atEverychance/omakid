@@ -5,6 +5,7 @@ Item {
     property string tileId
     property string iconSrc
     property string label
+    property color foreground: "#ffffff"
 
     signal entered()
     signal activated()
@@ -19,7 +20,7 @@ Item {
             width: 260; height: 260; radius: 40
             color: "transparent"
             border.width: ma.containsMouse ? 6 : 0
-            border.color: "#ffffff"
+            border.color: tile.foreground
             scale: ma.containsMouse ? 1.06 : 1.0
             Behavior on scale { NumberAnimation { duration: 140 } }
 
@@ -34,7 +35,7 @@ Item {
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
             text: tile.label
-            color: "#ffffff"
+            color: tile.foreground
             font { pixelSize: 40; weight: Font.DemiBold }
         }
     }

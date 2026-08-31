@@ -8,6 +8,10 @@ ShellRoot {
 
     property string lang: "en"
     property var tiles: []
+    property var colours: []
+    property string colourId: "blue-light"
+    property string desktopColour: "#A8D8F0"
+    property string foreground: "#1F1B24"
     readonly property string assets: Quickshell.env("OMAKID_ASSETS")
                                      || "/usr/share/omakid/assets"
 
@@ -32,12 +36,40 @@ ShellRoot {
         onFileChanged: reload()
     }
 
+    // --- her chosen flat colour ---------------------------------------
+    FileView {
+        path: Quickshell.env("HOME") + "/.config/omakid/identity.json"
+        watchChanges: true
+        onLoaded: {
+            try {
+                root.colours = JSON.parse(text()).colours
+                root.applyColour()
+            } catch (e) { console.warn("identity.json invalid:", e) }
+        }
+        onFileChanged: reload()
+    }
+    FileView {
+        path: Quickshell.env("HOME") + "/.local/state/omakid/colour"
+        watchChanges: true
+        onLoaded: { root.colourId = (text().trim() || "blue-light"); root.applyColour() }
+        onFileChanged: reload()
+    }
+    function applyColour() {
+        for (let c of root.colours) {
+            if (c.id === root.colourId) {
+                root.desktopColour = c.colour
+                root.foreground = c.text
+                return
+            }
+        }
+    }
+
     // --- her chosen animal -------------------------------------------
-    property string avatar: "fox"
+    property string avatar: "orca"
     FileView {
         path: Quickshell.env("HOME") + "/.local/state/omakid/avatar"
         watchChanges: true
-        onLoaded: root.avatar = (text().trim() || "fox")
+        onLoaded: root.avatar = (text().trim() || "orca")
         onFileChanged: reload()
     }
 
@@ -63,21 +95,19 @@ ShellRoot {
         anchors { top: true; bottom: true; left: true; right: true }
         exclusionMode: ExclusionMode.Ignore
         focusable: true
-        color: "#0f4c4c"
+        color: root.desktopColour
 
         Rectangle {
             anchors.fill: parent
-            gradient: Gradient {
-                GradientStop { position: 0.0; color: "#0d4a4a" }
-                GradientStop { position: 1.0; color: "#17635c" }
-            }
+            color: root.desktopColour
+            Behavior on color { ColorAnimation { duration: 180 } }
         }
 
-        // --- her avatar, top left: tap your own fox to change your fox
+        // --- her avatar, top left: tap the animal to change it
         Rectangle {
             anchors { top: parent.top; left: parent.left; margins: 32 }
             width: 88; height: 88; radius: 44
-            color: "#ffffff"
+            color: root.foreground
             opacity: av.containsMouse ? 1.0 : 0.75
             scale: av.containsMouse ? 1.08 : 1.0
             Behavior on scale { NumberAnimation { duration: 140 } }
@@ -110,7 +140,7 @@ ShellRoot {
                     width: 76; height: 52; radius: 10
                     color: "transparent"
                     border.width: root.lang === modelData ? 3 : 0
-                    border.color: "#ffffff"
+                    border.color: root.foreground
                     opacity: root.lang === modelData ? 1.0 : 0.45
                     Image {
                         anchors.fill: parent
@@ -137,6 +167,7 @@ ShellRoot {
                     tileId:  modelData.id
                     iconSrc: `${root.assets}/icons/${modelData.icon}`
                     label:   modelData.label[root.lang]
+                    foreground: root.foreground
                     onEntered:   root.speak(modelData.id)
                     onActivated: root.launch(modelData.exec)
                 }

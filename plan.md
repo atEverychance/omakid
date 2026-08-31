@@ -76,10 +76,10 @@ omakid/
 ├── system/                            # copied, root-owned
 │   ├── etc/opt/chrome/policies/managed/omakid.json
 │   └── etc/systemd/resolved.conf.d/omakid-dns.conf
-├── themes/omakid-{green,blue,purple,pink,orange,yellow}/colors.toml
+├── themes/omakid-{pink-light,blue-light,pink-bright,blue-bright,purple,gold}/colors.toml
 ├── assets/
 │   ├── icons/{paint,letters,games,stories}.png
-│   ├── avatars/{fox,owl,whale,bee,cat,horse}.png
+│   ├── avatars/{orca,elephant,bunny,jellyfish,panther,bear}.png
 │   ├── flags/{en,fr}.png
 │   ├── voice/{en,fr}/*.wav
 │   ├── klettres/{en-ca,fr-ca}/{alpha,syllab}/*.ogg
@@ -202,14 +202,12 @@ ShellRoot {
         anchors { top: true; bottom: true; left: true; right: true }
         exclusionMode: ExclusionMode.Ignore
         focusable: true
-        color: "#0f4c4c"
+        color: root.desktopColour
 
         Rectangle {
             anchors.fill: parent
-            gradient: Gradient {
-                GradientStop { position: 0.0; color: "#0d4a4a" }
-                GradientStop { position: 1.0; color: "#17635c" }
-            }
+            color: root.desktopColour
+            Behavior on color { ColorAnimation { duration: 180 } }
         }
 
         // --- language flags, top right -------------------------------
@@ -403,12 +401,12 @@ So invert it. Build a **permanent affordance** and auto-open it once on first bo
 
 ### Where it lives
 
-**Not a fifth grid tile** — the grid stays at four, and the mockup stays the acceptance criterion. Instead: **her chosen animal, top-left corner, 88 px.** She taps her own fox to change her fox. The affordance *is* the current state, which is about as legible as an interface gets without text.
+**Not a fifth grid tile** — the grid stays at four, and the mockup stays the acceptance criterion. Instead: **her chosen animal, top-left corner, 88 px.** She taps her own animal to change it. The affordance *is* the current state, which is about as legible as an interface gets without text.
 
 ### Two screens, six choices, no reading
 
 ```
-screen 1 — colour    six big swatches; tap and the background becomes it
+screen 1 — colour    six flat colours; tap and the background becomes exactly that colour
 screen 2 — avatar    six animals; tap and it lands in the corner
 ```
 
@@ -416,7 +414,7 @@ Both driven by `home/.config/omakid/identity.json`, so adding a colour is a one-
 
 ```bash
 omakid-set-identity colour purple   # -> omarchy-theme-set omakid-purple
-omakid-set-identity avatar owl      # -> state + plymouth
+omakid-set-identity avatar orca     # -> state + live corner avatar
 omakid-set-identity name "Nora"     # -> figlet -> screensaver.txt
 ```
 
@@ -424,7 +422,7 @@ omakid-set-identity name "Nora"     # -> figlet -> screensaver.txt
 
 ### Three rules
 
-- **Instant feedback.** Tap green and the background is green *before* the finger lifts. No confirm, no Apply, no OK.
+- **Instant feedback.** Tap light pink and the background is light pink *before* the finger lifts. No confirm, no Apply, no OK.
 - **Never blocking.** Tap through randomly, close it, ignore it — defaults apply and the grid loads. Nothing gates the desktop.
 - **It speaks.** Your voice, `assets/voice/{en,fr}/colour-*.wav` and `avatar-*.wav`.
 
@@ -446,9 +444,9 @@ That's Omarchy's existing screensaver pipeline, unmodified — `branding.sh` cop
 
 Propagate the choice to **plymouth and SDDM** — `omarchy plymouth preview` / `set` / `reset` handle a custom boot logo and colours.
 
-Which means: from the instant she presses power, before any desktop exists, the machine is visibly *hers.* Her colour on the boot splash, her fox on the login screen, her name in the screensaver. Two identical salvaged laptops become two obviously different machines. At six and seven, with a sister, that distinction is not a small thing.
+Which means: from the instant she presses power, before any desktop exists, the machine is visibly *hers.* Her colour on the boot splash, her orca on the login screen, her name in the screensaver. Two identical salvaged laptops become two obviously different machines. At six and seven, with a sister, that distinction is not a small thing.
 
-**Open question for the girls:** let them name their own six animals. Choosing from a list you invented is a worse version of this feature than choosing from a list they wrote. `identity.json` carries a TODO to that effect.
+**Settled choices:** the six shared colours are light pink, light blue, bright pink, bright blue, purple and gold. The six animals are orca, elephant, bunny, jellyfish, panther and bear. They are shared between both laptops: one simple list, no per-child filtering.
 
 
 ## 8. The language wrapper
