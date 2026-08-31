@@ -270,6 +270,109 @@ if iso.count('find_exact_package "$local_package_name" "$offline_mirror_dir"') !
     raise SystemExit('exact artifact lookup should be reused, not repeated after online resolution')
 PY
 
+check "ISO patch keeps early install transactions bootstrap-only" python3 - <<'PY'
+import ast
+import re
+from pathlib import Path
+
+patch = Path('build/patches/omarchy-iso-local-packages.patch').read_text()
+start = patch.index(
+    'diff --git a/configs/airootfs/usr/share/omarchy-iso/orchestrator/phases_impl.py'
+)
+lines = []
+for line in patch[start:].splitlines():
+    if line.startswith(('---', '+++', 'diff ', 'index ', '@@')) or line.startswith('-'):
+        continue
+    lines.append(line[1:] if line.startswith(('+', ' ')) else line)
+effective_phases = '\n'.join(lines)
+
+
+def effective_function(name):
+    match = re.search(rf'(?m)^def {re.escape(name)}\(', effective_phases)
+    if not match:
+        raise SystemExit(f'effective ISO patch is missing {name}')
+    function_lines = []
+    for line in effective_phases[match.start():].splitlines():
+        if function_lines and line and not line[0].isspace():
+            break
+        function_lines.append(line)
+    module = ast.parse('\n'.join(function_lines))
+    if len(module.body) != 1 or not isinstance(module.body[0], ast.FunctionDef):
+        raise SystemExit(f'could not isolate effective function body for {name}')
+    return module.body[0]
+
+
+def validate_early_contract(early_packages, install_early_packages):
+    returns = [node for node in early_packages.body if isinstance(node, ast.Return)]
+    if len(returns) != 1 or ast.dump(returns[0].value) != ast.dump(
+        ast.Call(func=ast.Name(id='_early_bootstrap_packages'), args=[], keywords=[])
+    ):
+        raise SystemExit('_early_packages must return only _early_bootstrap_packages()')
+
+    bootstrap_assignments = [
+        node for node in install_early_packages.body
+        if isinstance(node, ast.Assign)
+        and len(node.targets) == 1
+        and isinstance(node.targets[0], ast.Name)
+        and node.targets[0].id == 'bootstrap_packages'
+    ]
+    if len(bootstrap_assignments) != 1 or ast.dump(bootstrap_assignments[0].value) != ast.dump(
+        ast.Call(func=ast.Name(id='_early_bootstrap_packages'), args=[], keywords=[])
+    ):
+        raise SystemExit('_install_early_packages must derive bootstrap_packages once')
+
+    transactions = [
+        node for node in ast.walk(install_early_packages)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == 'installer'
+        and node.func.attr == 'add_additional_packages'
+    ]
+    if len(transactions) != 1:
+        raise SystemExit(
+            '_install_early_packages must contain exactly one additional-package transaction'
+        )
+    transaction = transactions[0]
+    if (
+        len(transaction.args) != 1
+        or not isinstance(transaction.args[0], ast.Name)
+        or transaction.args[0].id != 'bootstrap_packages'
+        or transaction.keywords
+    ):
+        raise SystemExit(
+            '_install_early_packages must call '
+            'installer.add_additional_packages(bootstrap_packages)'
+        )
+
+    names = {node.id for node in ast.walk(install_early_packages) if isinstance(node, ast.Name)}
+    forbidden_names = {
+        'EARLY_LUAROCKS_PACKAGES', '_early_user_seed_packages',
+        '_omarchy_nvim_package', 'user_seed_packages',
+    }
+    found = forbidden_names & names
+    if found:
+        raise SystemExit(f'early installer retains editor/LuaRocks symbols: {sorted(found)}')
+    identifiers = names | {
+        node.attr for node in ast.walk(install_early_packages)
+        if isinstance(node, ast.Attribute)
+    }
+    if any('luarocks' in value.lower() or 'nvim' in value.lower() for value in identifiers):
+        raise SystemExit('early installer retains a LuaRocks or nvim identifier')
+    strings = [
+        node.value.lower() for node in ast.walk(install_early_packages)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+    ]
+    if any('luarocks' in value or 'nvim' in value for value in strings):
+        raise SystemExit('early installer retains a LuaRocks or nvim seed operation')
+
+
+validate_early_contract(
+    effective_function('_early_packages'),
+    effective_function('_install_early_packages'),
+)
+PY
+
 check "local package metadata extraction and normalization fixtures" python3 - <<'PY'
 import re
 import subprocess
@@ -531,6 +634,93 @@ if not resolve < retain < append:
     raise SystemExit('prepared builder does not retain exact local artifacts in discovery order')
 if build_iso.count('find_exact_package "$local_package_name" "$offline_mirror_dir"') != 1:
     raise SystemExit('prepared builder repeats exact local artifact discovery unsafely')
+PY
+  check "prepared early package installer excludes editor and LuaRocks stack" python3 - "$prepared_iso" <<'PY'
+import ast
+import sys
+from pathlib import Path
+
+path = (
+    Path(sys.argv[1])
+    / 'configs/airootfs/usr/share/omarchy-iso/orchestrator/phases_impl.py'
+)
+tree = ast.parse(path.read_text())
+functions = {
+    node.name: node for node in tree.body
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+}
+required = {'_early_bootstrap_packages', '_early_packages', '_install_early_packages'}
+missing = required - functions.keys()
+if missing:
+    raise SystemExit(f'{path}: missing early package functions: {sorted(missing)}')
+
+bootstrap = functions['_early_bootstrap_packages']
+bootstrap_names = {node.id for node in ast.walk(bootstrap) if isinstance(node, ast.Name)}
+if '_omarchy_settings_package' not in bootstrap_names:
+    raise SystemExit(f'{path}: bootstrap packages no longer retain early omarchy-settings')
+
+early_packages = functions['_early_packages']
+returns = [node for node in early_packages.body if isinstance(node, ast.Return)]
+if len(returns) != 1 or ast.dump(returns[0].value) != ast.dump(
+    ast.Call(func=ast.Name(id='_early_bootstrap_packages'), args=[], keywords=[])
+):
+    raise SystemExit(f'{path}: _early_packages is not bootstrap-only')
+
+install = functions['_install_early_packages']
+bootstrap_assignments = [
+    node for node in install.body
+    if isinstance(node, ast.Assign)
+    and len(node.targets) == 1
+    and isinstance(node.targets[0], ast.Name)
+    and node.targets[0].id == 'bootstrap_packages'
+]
+if len(bootstrap_assignments) != 1 or ast.dump(bootstrap_assignments[0].value) != ast.dump(
+    ast.Call(func=ast.Name(id='_early_bootstrap_packages'), args=[], keywords=[])
+):
+    raise SystemExit(f'{path}: early installer does not derive bootstrap_packages exactly once')
+
+transactions = [
+    node for node in ast.walk(install)
+    if isinstance(node, ast.Call)
+    and isinstance(node.func, ast.Attribute)
+    and isinstance(node.func.value, ast.Name)
+    and node.func.value.id == 'installer'
+    and node.func.attr == 'add_additional_packages'
+]
+if len(transactions) != 1:
+    raise SystemExit(f'{path}: early installer must have exactly one package transaction')
+transaction = transactions[0]
+if (
+    len(transaction.args) != 1
+    or not isinstance(transaction.args[0], ast.Name)
+    or transaction.args[0].id != 'bootstrap_packages'
+    or transaction.keywords
+):
+    raise SystemExit(
+        f'{path}: early installer must call '
+        'installer.add_additional_packages(bootstrap_packages)'
+    )
+
+names = {node.id for node in ast.walk(install) if isinstance(node, ast.Name)}
+forbidden_names = {
+    'EARLY_LUAROCKS_PACKAGES', '_early_user_seed_packages',
+    '_omarchy_nvim_package', 'user_seed_packages',
+}
+found = forbidden_names & names
+if found:
+    raise SystemExit(f'{path}: early installer retains forbidden symbols: {sorted(found)}')
+identifiers = names | {
+    node.attr for node in ast.walk(install)
+    if isinstance(node, ast.Attribute)
+}
+if any('luarocks' in value.lower() or 'nvim' in value.lower() for value in identifiers):
+    raise SystemExit(f'{path}: early installer retains a LuaRocks or nvim identifier')
+strings = [
+    node.value.lower() for node in ast.walk(install)
+    if isinstance(node, ast.Constant) and isinstance(node.value, str)
+]
+if any('luarocks' in value or 'nvim' in value for value in strings):
+    raise SystemExit(f'{path}: early installer retains a LuaRocks or nvim seed operation')
 PY
   check "prepared child session autologins without requiring encryption" sh -c \
     "grep -q 'if not ctx.defer_provisioning:' '$prepared_iso/configs/airootfs/usr/share/omarchy-iso/orchestrator/phases_impl.py' && grep -q \"Omakid.s child session is passwordless\" '$prepared_iso/configs/airootfs/usr/share/omarchy-iso/orchestrator/phases_impl.py' && ! grep -q 'if ctx.encrypt and not ctx.defer_provisioning:' '$prepared_iso/configs/airootfs/usr/share/omarchy-iso/orchestrator/phases_impl.py'"

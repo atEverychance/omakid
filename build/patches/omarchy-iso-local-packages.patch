@@ -259,7 +259,7 @@ index 5f7173f..fdedcbb 100755
 +  find_exact_package "$pkg" "$offline_mirror_dir"
 +done | sed 's|^|  |'
 diff --git a/configs/airootfs/usr/share/omarchy-iso/orchestrator/phases_impl.py b/configs/airootfs/usr/share/omarchy-iso/orchestrator/phases_impl.py
-index 6d48624..4e04aa3 100644
+index 6d48624..d8d7731 100644
 --- a/configs/airootfs/usr/share/omarchy-iso/orchestrator/phases_impl.py
 +++ b/configs/airootfs/usr/share/omarchy-iso/orchestrator/phases_impl.py
 @@ -150,11 +150,9 @@ def _early_user_seed_packages() -> list[str]:
@@ -277,7 +277,25 @@ index 6d48624..4e04aa3 100644
 
 
  # ─────────────────────────────────────────────────────────────────────────────
-@@ -1409,7 +1407,9 @@ def configure_login(ctx: InstallContext) -> None:
+@@ -627,17 +625,10 @@ def _drop_archinstall_zram_conf(ctx: InstallContext) -> None:
+
+ def _install_early_packages(installer) -> None:
+     bootstrap_packages = _early_bootstrap_packages()
+-    user_seed_packages = _early_user_seed_packages()
+
+     info(f"› installing early Omarchy packages: {', '.join(bootstrap_packages)}")
+     installer.add_additional_packages(bootstrap_packages)
+
+-    info(f"› installing LuaRocks prerequisites: {', '.join(EARLY_LUAROCKS_PACKAGES)}")
+-    installer.add_additional_packages(EARLY_LUAROCKS_PACKAGES)
+-
+-    info(f"› installing user seed packages: {', '.join(user_seed_packages)}")
+-    installer.add_additional_packages(user_seed_packages)
+-
+
+ def _mount_offline_package_cache(ctx: InstallContext) -> None:
+     """Let pacstrap consume bundled packages without copying them first.
+@@ -1409,7 +1400,9 @@ def configure_login(ctx: InstallContext) -> None:
      )
 
      autologin_conf = sddm_dir / "autologin.conf"
