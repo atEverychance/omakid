@@ -191,7 +191,7 @@ if tux_meta.get('upstream_commit') != refs.get('TUXPAINT_AUR_REF'):
 if 'pkgver=0.9.35' not in (tuxpaint / 'PKGBUILD').read_text():
     raise SystemExit('reviewed Tux Paint recipe is missing')
 PY
-check "ISO patch encodes the local dependency chain and exact keep-set" python3 - <<'PY'
+check "ISO patch derives local runtime closure before online filtering" python3 - <<'PY'
 import re
 from pathlib import Path
 
@@ -203,7 +203,7 @@ iso_diff = patch[iso_start:builder_start]
 builder_diff = patch[builder_start:phases_start]
 
 # Read the effective lines represented by each diff hunk, excluding removals
-# and patch headers. This validates relationships, not mere name occurrence.
+# and patch headers. This validates control/data flow, not package-name mentions.
 def effective(diff):
     lines = []
     for line in diff.splitlines():
@@ -227,7 +227,10 @@ if not makepkg < handoff < install < loop_end:
     raise SystemExit('sdl2_pango is not installed immediately after its build and before Tux Paint')
 if 'sdl2_pango_package=$(find_exact_package sdl2_pango "$work_dir")' not in builder:
     raise SystemExit('local dependency handoff does not identify the exact built package')
-for invariant in ('pacman -Qp "$candidate"', 'multiple builds found', 'build not found'):
+for invariant in (
+    'pacman -Qp "$candidate"', 'cannot read package metadata',
+    'multiple builds found', 'build not found',
+):
     if invariant not in builder:
         raise SystemExit(f'exact local artifact validation missing: {invariant}')
 
@@ -238,10 +241,121 @@ if not match:
 keep_set = [line.strip().strip('"') for line in match.group('body').splitlines() if line.strip()]
 if keep_set != ['$OMARCHY_RUNTIME_PACKAGE', '$OMARCHY_SETTINGS_PACKAGE', 'sdl2_pango', 'tuxpaint']:
     raise SystemExit(f'local package keep-set drifted: {keep_set}')
-if 'grep -Fxv -f <(printf \'%s\\n\' "${local_package_names[@]}")' not in iso:
-    raise SystemExit('online resolution is not filtered through the complete local keep-set')
-if 'for local_package_name in "${local_package_names[@]}"; do' not in iso:
-    raise SystemExit('offline artifact retention is not driven by the complete local keep-set')
+
+for function in ('find_exact_package', 'normalize_dependency_target', 'read_runtime_dependencies'):
+    if not re.search(rf'(?m)^{function}\(\) \{{$', iso):
+        raise SystemExit(f'missing local metadata helper: {function}')
+for invariant in (
+    'bsdtar -xOf "$package_file" .PKGINFO',
+    'dependency=${line#depend = }',
+    'target=$(normalize_dependency_target "$dependency")',
+    'cannot read .PKGINFO',
+    'malformed runtime dependency',
+):
+    if invariant not in iso:
+        raise SystemExit(f'local runtime metadata contract missing: {invariant}')
+
+discover = iso.index('for local_package_name in "${local_package_names[@]}"; do')
+exact = iso.index('local_package_file=$(find_exact_package', discover)
+metadata = iso.index('read_runtime_dependencies "$local_package_name" "$local_package_file"', exact)
+seed = iso.index('all_packages+=("${local_dependency_targets[@]}")', metadata)
+filter_names = iso.index('grep -Fxv -f <(printf \'%s\\n\' "${local_package_names[@]}")', seed)
+retain = iso.index('for local_package_file in "${local_package_files[@]}"; do', filter_names)
+append = iso.index('required_package_files+=("${local_package_file##*/}")', retain)
+if not discover < exact < metadata < seed < filter_names < retain < append:
+    raise SystemExit(
+        'local metadata is not seeded before filtering, or exact artifacts are not retained in order'
+    )
+if iso.count('find_exact_package "$local_package_name" "$offline_mirror_dir"') != 1:
+    raise SystemExit('exact artifact lookup should be reused, not repeated after online resolution')
+PY
+
+check "local package metadata extraction and normalization fixtures" python3 - <<'PY'
+import re
+import subprocess
+from pathlib import Path
+
+patch = Path('build/patches/omarchy-iso-local-packages.patch').read_text()
+start = patch.index('diff --git a/builder/build-iso.sh')
+end = patch.index('diff --git a/builder/build-omarchy-packages.sh')
+lines = []
+for line in patch[start:end].splitlines():
+    if line.startswith(('---', '+++', 'diff ', 'index ', '@@')) or line.startswith('-'):
+        continue
+    lines.append(line[1:] if line.startswith(('+', ' ')) else line)
+iso = '\n'.join(lines) + '\n'
+
+def function(name):
+    match = re.search(rf'(?ms)^{name}\(\) \{{\n.*?^\}}\n', iso)
+    if not match:
+        raise SystemExit(f'cannot extract effective shell function {name}')
+    return match.group(0)
+
+helpers = '\n'.join(function(name) for name in (
+    'find_exact_package', 'normalize_dependency_target', 'read_runtime_dependencies',
+))
+fixture = helpers + r'''
+set -u
+
+for dependency in 'glibc' 'libpaper>=2.2.5' 'libx.so=1-64' 'foo<3' 'bar<=4' 'baz>1'; do
+  expected=${dependency%%[<>=]*}
+  actual=$(normalize_dependency_target "$dependency") || exit 20
+  [[ $actual == "$expected" ]] || exit 21
+done
+for dependency in '' '=1' 'foo>' 'foo>>1' 'foo >= 1' 'foo!1'; do
+  if normalize_dependency_target "$dependency" >/dev/null 2>&1; then
+    exit 22
+  fi
+done
+
+fixture_dir=$(mktemp -d)
+trap 'rm -rf "$fixture_dir"' EXIT
+pacman() { printf '%s\n' 'tuxpaint 0.9.35-2'; return 1; }
+if find_exact_package tuxpaint "$fixture_dir" >/dev/null 2>&1; then
+  exit 23
+fi
+touch "$fixture_dir/tuxpaint-0.9.35-2-x86_64.pkg.tar.zst"
+if find_exact_package tuxpaint "$fixture_dir" >/dev/null 2>&1; then
+  exit 24
+fi
+
+bsdtar() {
+  case "$2" in
+    good.pkg)
+      printf '%s\n' \
+        'pkgname = tuxpaint' \
+        'depend = glibc>=2.39' \
+        'depend = libpaper=2.2.5' \
+        'depend = sdl2_pango'
+      ;;
+    malformed.pkg)
+      printf '%s\n' 'pkgname = tuxpaint' 'depend = libpaper >= 2'
+      ;;
+    missing-name.pkg)
+      printf '%s\n' 'depend = glibc'
+      ;;
+    missing.pkg)
+      return 1
+      ;;
+    *)
+      return 2
+      ;;
+  esac
+}
+expected=$'glibc\nlibpaper\nsdl2_pango'
+actual=$(read_runtime_dependencies tuxpaint good.pkg) || exit 25
+[[ $actual == "$expected" ]] || exit 26
+for artifact in malformed.pkg missing-name.pkg missing.pkg; do
+  if read_runtime_dependencies tuxpaint "$artifact" >/dev/null 2>&1; then
+    exit 27
+  fi
+done
+'''
+result = subprocess.run(['bash'], input=fixture, text=True, capture_output=True)
+if result.returncode:
+    raise SystemExit(
+        f'fixture shell failed with {result.returncode}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}'
+    )
 PY
 check "ISO workflow has exact dispatch and reviewed-branch push triggers plus BIOS/UEFI gates" python3 - <<'PY'
 from pathlib import Path
@@ -324,13 +438,37 @@ match = re.search(r'local_package_names=\(\n(?P<body>.*?)\n\)', build_iso, re.S)
 keep_set = [line.strip().strip('"') for line in match.group('body').splitlines() if line.strip()] if match else []
 if keep_set != ['$OMARCHY_RUNTIME_PACKAGE', '$OMARCHY_SETTINGS_PACKAGE', 'sdl2_pango', 'tuxpaint']:
     raise SystemExit(f'prepared offline keep-set drifted: {keep_set}')
-if 'grep -Fxv -f <(printf \'%s\\n\' "${local_package_names[@]}")' not in build_iso:
-    raise SystemExit('prepared online resolver does not exclude the complete local keep-set')
-if 'for local_package_name in "${local_package_names[@]}"; do' not in build_iso:
-    raise SystemExit('prepared mirror retention does not use the complete local keep-set')
-for invariant in ('pacman -Qp "$candidate"', 'multiple local builds found', 'local build not found'):
+for function in ('find_exact_package', 'normalize_dependency_target', 'read_runtime_dependencies'):
+    if not re.search(rf'(?m)^{function}\(\) \{{$', build_iso):
+        raise SystemExit(f'prepared ISO builder lacks helper: {function}')
+for invariant in (
+    'pacman -Qp "$candidate"', 'cannot read package metadata',
+    'bsdtar -xOf "$package_file" .PKGINFO', 'cannot read .PKGINFO',
+    'malformed runtime dependency',
+):
     if invariant not in build_iso:
-        raise SystemExit(f'prepared mirror retention lacks exact-artifact invariant: {invariant}')
+        raise SystemExit(f'prepared local metadata fail-closed invariant missing: {invariant}')
+
+discover = build_iso.index('for local_package_name in "${local_package_names[@]}"; do')
+metadata = build_iso.index(
+    'read_runtime_dependencies "$local_package_name" "$local_package_file"', discover
+)
+collect = build_iso.index('# Collect every package we want available in the offline mirror.', metadata)
+seed = build_iso.index('all_packages+=("${local_dependency_targets[@]}")', collect)
+filter_names = build_iso.index(
+    'grep -Fxv -f <(printf \'%s\\n\' "${local_package_names[@]}")', seed
+)
+download = build_iso.index('download_offline_packages()', filter_names)
+if not discover < metadata < collect < seed < filter_names < download:
+    raise SystemExit('prepared builder does not derive and seed local runtime dependencies before filtering')
+
+resolve = build_iso.index('if ! resolved_package_files=', download)
+retain = build_iso.index('for local_package_file in "${local_package_files[@]}"; do', resolve)
+append = build_iso.index('required_package_files+=("${local_package_file##*/}")', retain)
+if not resolve < retain < append:
+    raise SystemExit('prepared builder does not retain exact local artifacts in discovery order')
+if build_iso.count('find_exact_package "$local_package_name" "$offline_mirror_dir"') != 1:
+    raise SystemExit('prepared builder repeats exact local artifact discovery unsafely')
 PY
   check "prepared child session autologins without requiring encryption" sh -c \
     "grep -q 'if not ctx.defer_provisioning:' '$prepared_iso/configs/airootfs/usr/share/omarchy-iso/orchestrator/phases_impl.py' && grep -q \"Omakid.s child session is passwordless\" '$prepared_iso/configs/airootfs/usr/share/omarchy-iso/orchestrator/phases_impl.py' && ! grep -q 'if ctx.encrypt and not ctx.defer_provisioning:' '$prepared_iso/configs/airootfs/usr/share/omarchy-iso/orchestrator/phases_impl.py'"

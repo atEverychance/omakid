@@ -1,8 +1,8 @@
 diff --git a/builder/build-iso.sh b/builder/build-iso.sh
-index db8daa2..96bc880 100755
+index db8daa2..cd2bf17 100755
 --- a/builder/build-iso.sh
 +++ b/builder/build-iso.sh
-@@ -23,6 +23,15 @@ esac
+@@ -23,6 +23,89 @@ esac
  : "${OMARCHY_NVIM_PACKAGE:=omarchy-nvim}"
  export OMARCHY_RUNTIME_PACKAGE OMARCHY_SETTINGS_PACKAGE OMARCHY_NVIM_PACKAGE
 
@@ -15,10 +15,114 @@ index db8daa2..96bc880 100755
 +  tuxpaint
 +)
 +
++find_exact_package() {
++  local package_name=$1 directory=$2 candidate candidate_metadata candidate_name found=
++  for candidate in "$directory/$package_name-"*.pkg.tar.*; do
++    [[ -f $candidate && $candidate != *.sig ]] || continue
++    if ! candidate_metadata=$(pacman -Qp "$candidate" 2>/dev/null) ||
++      ! read -r candidate_name _ <<< "$candidate_metadata"; then
++      echo "ERROR: cannot read package metadata from $candidate" >&2
++      return 1
++    fi
++    [[ $candidate_name == "$package_name" ]] || continue
++    if [[ -n $found ]]; then
++      echo "ERROR: multiple builds found for $package_name in $directory" >&2
++      return 1
++    fi
++    found=$candidate
++  done
++  if [[ -z $found ]]; then
++    echo "ERROR: build not found for $package_name in $directory" >&2
++    return 1
++  fi
++  printf '%s\n' "$found"
++}
++
++normalize_dependency_target() {
++  local dependency=$1 target constraint
++  local package_name_pattern='^[[:alnum:]@._+-]+$'
++  local constraint_pattern='^(>=|<=|=|>|<)[^[:space:]<>=]+$'
++
++  target=${dependency%%[<>=]*}
++  constraint=${dependency#"$target"}
++  if [[ ! $target =~ $package_name_pattern ]] ||
++    { [[ -n $constraint ]] && [[ ! $constraint =~ $constraint_pattern ]]; }; then
++    return 1
++  fi
++  printf '%s\n' "$target"
++}
++
++read_runtime_dependencies() {
++  local package_name=$1 package_file=$2 pkginfo line dependency target
++  local metadata_name=
++
++  if ! pkginfo=$(bsdtar -xOf "$package_file" .PKGINFO 2>/dev/null); then
++    echo "ERROR: cannot read .PKGINFO from local build $package_file" >&2
++    return 1
++  fi
++  while IFS= read -r line; do
++    case "$line" in
++      "pkgname = "*)
++        if [[ -n $metadata_name ]]; then
++          echo "ERROR: duplicate pkgname metadata in local build $package_file" >&2
++          return 1
++        fi
++        metadata_name=${line#pkgname = }
++        ;;
++      "depend = "*)
++        dependency=${line#depend = }
++        if ! target=$(normalize_dependency_target "$dependency"); then
++          echo "ERROR: malformed runtime dependency '$dependency' in $package_file" >&2
++          return 1
++        fi
++        printf '%s\n' "$target"
++        ;;
++      depend*)
++        echo "ERROR: malformed dependency metadata '$line' in $package_file" >&2
++        return 1
++        ;;
++    esac
++  done <<< "$pkginfo"
++  if [[ $metadata_name != "$package_name" ]]; then
++    echo "ERROR: expected pkgname $package_name in $package_file, found '${metadata_name:-missing}'" >&2
++    return 1
++  fi
++}
++
  # Packages installed into the Arch container used to build the ISO.
  pacman-key --init
  pacman --noconfirm -Sy archlinux-keyring
-@@ -196,7 +205,7 @@ mapfile -t all_packages < <(
+@@ -187,6 +270,29 @@ if [[ ! -f $setup_form ]]; then
+ fi
+ cp "$setup_form" "$build_cache_dir/airootfs/usr/share/omarchy-iso/setup-form.sh"
+
++# Before excluding locally built packages from the online transaction, read
++# their exact artifacts' runtime metadata. Their official-repository
++# dependencies must seed pacman's online transaction because pacman cannot see
++# dependency metadata for packages that are absent from its synced databases.
++declare -a local_package_files=()
++declare -a local_dependency_targets=()
++if [[ -n ${LOCAL_OMARCHY_BUILD:-} ]]; then
++  for local_package_name in "${local_package_names[@]}"; do
++    local_package_file=$(find_exact_package "$local_package_name" "$offline_mirror_dir") || exit 1
++    local_package_files+=("$local_package_file")
++    if ! local_dependencies=$(
++      read_runtime_dependencies "$local_package_name" "$local_package_file"
++    ); then
++      exit 1
++    fi
++    if [[ -n $local_dependencies ]]; then
++      while IFS= read -r local_dependency; do
++        local_dependency_targets+=("$local_dependency")
++      done <<< "$local_dependencies"
++    fi
++  done
++fi
++
+ # Collect every package we want available in the offline mirror.
+ declare -a all_packages
+ mapfile -t all_packages < <(
+@@ -196,20 +302,19 @@ mapfile -t all_packages < <(
      grep -hv '^#\|^$' /builder/archinstall.packages
      # Always include the selected Omarchy packages so the target install can
      # find the runtime and companion packages in the offline mirror.
@@ -27,29 +131,60 @@ index db8daa2..96bc880 100755
    } | sort -u
  )
 
-@@ -206,10 +215,7 @@ mapfile -t all_packages < <(
+-# With --local-source we already built these omarchy* packages directly into
+-# the mirror; strip them from the pacman -Syw list so it doesn't try to fetch
+-# the published versions on top.
++# Seed with metadata-derived local runtime dependencies first. Then remove only
++# the package names whose exact local artifacts are already in the mirror.
++# Pacman recursively resolves the remaining official-repository closure.
  if [[ -n ${LOCAL_OMARCHY_BUILD:-} ]]; then
++  all_packages+=("${local_dependency_targets[@]}")
    mapfile -t all_packages < <(
      printf '%s\n' "${all_packages[@]}" |
 -      grep -Fxv \
 -        -e "$OMARCHY_RUNTIME_PACKAGE" \
 -        -e "$OMARCHY_SETTINGS_PACKAGE" \
 -        -e "$OMARCHY_NVIM_PACKAGE" || true
-+      grep -Fxv -f <(printf '%s\n' "${local_package_names[@]}") || true
++      grep -Fxv -f <(printf '%s\n' "${local_package_names[@]}") |
++      sort -u || true
    )
  fi
 
-@@ -245,8 +251,7 @@ mapfile -t required_package_files <<< "$resolved_package_files"
- # checkouts. Add those exact artifacts back to the keep-set after verifying
- # that the local build left exactly one file for each selected package name.
+@@ -242,27 +347,15 @@ fi
+ mapfile -t required_package_files <<< "$resolved_package_files"
+
+ # The online transaction intentionally excludes packages built from the local
+-# checkouts. Add those exact artifacts back to the keep-set after verifying
+-# that the local build left exactly one file for each selected package name.
++# checkouts. Add the exact artifacts discovered above back to the keep-set in
++# local-package order; a disappearance here indicates unsafe cache mutation.
  if [[ -n ${LOCAL_OMARCHY_BUILD:-} ]]; then
 -  for local_package_name in \
 -    "$OMARCHY_RUNTIME_PACKAGE" "$OMARCHY_SETTINGS_PACKAGE" "$OMARCHY_NVIM_PACKAGE"; do
-+  for local_package_name in "${local_package_names[@]}"; do
-     local_package_file=""
-     for candidate in "$offline_mirror_dir/$local_package_name-"*.pkg.tar.*; do
-       [[ -f $candidate && $candidate != *.sig ]] || continue
-@@ -304,8 +309,7 @@ resolve_expected_packages() {
+-    local_package_file=""
+-    for candidate in "$offline_mirror_dir/$local_package_name-"*.pkg.tar.*; do
+-      [[ -f $candidate && $candidate != *.sig ]] || continue
+-      read -r candidate_name _ < <(pacman -Qp "$candidate" 2>/dev/null) || continue
+-      [[ $candidate_name == "$local_package_name" ]] || continue
+-      if [[ -n $local_package_file ]]; then
+-        echo "ERROR: multiple local builds found for $local_package_name" >&2
+-        exit 1
+-      fi
+-      local_package_file="${candidate##*/}"
+-    done
+-    if [[ -z $local_package_file ]]; then
+-      echo "ERROR: local build not found for $local_package_name" >&2
++  for local_package_file in "${local_package_files[@]}"; do
++    if [[ ! -f $local_package_file ]]; then
++      echo "ERROR: local build disappeared before retention: $local_package_file" >&2
+       exit 1
+     fi
+-    required_package_files+=("$local_package_file")
++    required_package_files+=("${local_package_file##*/}")
+   done
+ fi
+
+@@ -304,8 +397,7 @@ resolve_expected_packages() {
        # install time, not the build-time source it came from.
        grep -hv '^#\|^$' \
          "$build_cache_dir/airootfs/usr/share/omarchy-iso/omarchy-base.packages"
@@ -60,10 +195,10 @@ index db8daa2..96bc880 100755
    )
 
 diff --git a/builder/build-omarchy-packages.sh b/builder/build-omarchy-packages.sh
-index 5f7173f..56d12ec 100755
+index 5f7173f..fdedcbb 100755
 --- a/builder/build-omarchy-packages.sh
 +++ b/builder/build-omarchy-packages.sh
-@@ -39,9 +39,29 @@ pacman -Sy --noconfirm
+@@ -39,9 +39,33 @@ pacman -Sy --noconfirm
  packages=(
    "$OMARCHY_SETTINGS_PACKAGE"
    "$OMARCHY_RUNTIME_PACKAGE"
@@ -73,10 +208,14 @@ index 5f7173f..56d12ec 100755
  )
 
 +find_exact_package() {
-+  local package_name=$1 directory=$2 candidate candidate_name found=
-+  for candidate in "$directory"/*.pkg.tar.*; do
++  local package_name=$1 directory=$2 candidate candidate_metadata candidate_name found=
++  for candidate in "$directory/$package_name-"*.pkg.tar.*; do
 +    [[ -f $candidate && $candidate != *.sig ]] || continue
-+    read -r candidate_name _ < <(pacman -Qp "$candidate" 2>/dev/null) || continue
++    if ! candidate_metadata=$(pacman -Qp "$candidate" 2>/dev/null) ||
++      ! read -r candidate_name _ <<< "$candidate_metadata"; then
++      echo "ERROR: cannot read package metadata from $candidate" >&2
++      return 1
++    fi
 +    [[ $candidate_name == "$package_name" ]] || continue
 +    if [[ -n $found ]]; then
 +      echo "ERROR: multiple builds found for $package_name in $directory" >&2
@@ -94,7 +233,7 @@ index 5f7173f..56d12ec 100755
  # Local-source packages must replace every cached build of the same package,
  # even when the checkout's generated pkgver sorts below a published build.
  # Otherwise the later generic cache pruning can silently keep edge instead.
-@@ -65,8 +85,15 @@ for pkg in "${packages[@]}"; do
+@@ -65,8 +89,15 @@ for pkg in "${packages[@]}"; do
      cd '$pkg_work' &&
      PKGDEST='$work_dir' \
      OMARCHY_SRC=/omarchy-source \
@@ -111,7 +250,7 @@ index 5f7173f..56d12ec 100755
  done
 
  mkdir -p "$offline_mirror_dir"
-@@ -82,4 +109,6 @@ done
+@@ -82,4 +113,6 @@ done
 
  echo
  echo "Built Omarchy packages, placed in $offline_mirror_dir:"
